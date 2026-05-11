@@ -1,30 +1,52 @@
 {
   "expo": {
-    "name": "flightshare",
-    "slug": "flightshare",
+    "name": "Flare",
+    "slug": "flare",
+    "scheme": "flare",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#07080C"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.flare.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Flare uses your camera to add photos to your flights.",
+        "NSPhotoLibraryUsageDescription": "Flare accesses your photos to add images to your flights and profile.",
+"NSLocationWhenInUseUsageDescription": "Flair tracks how long you spend at the airport so you don't have to log it manually.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Flair tracks how long you spend at the airport, even when the app is in the background."
+      },
+      "backgroundModes": ["location"]
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#6B5BFF"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker",
+      "expo-secure-store",
+      "expo-notifications",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Flair tracks how long you spend at the airport so you don't have to log it manually.",
+          "locationAlwaysAndWhenInUsePermission": "Flair tracks how long you spend at the airport, even when the app is in the background.",
+          "isIosBackgroundLocationEnabled": true
+        }
+      ]
+    ]
   }
 }
