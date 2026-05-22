@@ -35,12 +35,11 @@ function buildHTML(accentColor: string, _isDark: boolean, verticalOffset: number
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{background:transparent;overflow:hidden;width:100vw;height:100vh}
-  svg{display:block;touch-action:none;position:absolute;top:0;left:0}
-  .country,.state{transition:fill .25s}
+  canvas{display:block;position:absolute;top:0;left:0;touch-action:none}
 </style>
 </head>
 <body>
-<svg id="g"></svg>
+<canvas id="g"></canvas>
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 <script>
@@ -50,481 +49,291 @@ const LAND="${LAND}";
 const BORDER="${BORDER}";
 const GRAT="${GRAT}";
 
-function hexToRgb(h){
-  const r=parseInt(h.slice(1,3),16);
-  const g=parseInt(h.slice(3,5),16);
-  const b=parseInt(h.slice(5,7),16);
-  return [r,g,b];
-}
-const [AR,AG,AB]=hexToRgb(ACCENT);
+function hexToRgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];}
+const[AR,AG,AB]=hexToRgb(ACCENT);
 const ACCENT_STROKE=\`rgba(\${AR},\${AG},\${AB},0.55)\`;
-const ACCENT_GLOW=\`rgba(\${AR},\${AG},\${AB},0.45)\`;
+const ACCENT_GLOW=\`rgba(\${AR},\${AG},\${AB},0.4)\`;
 
-const FIPS={
-  '01':'AL','02':'AK','04':'AZ','05':'AR','06':'CA','08':'CO','09':'CT',
-  '10':'DE','11':'DC','12':'FL','13':'GA','15':'HI','16':'ID','17':'IL',
-  '18':'IN','19':'IA','20':'KS','21':'KY','22':'LA','23':'ME','24':'MD',
-  '25':'MA','26':'MI','27':'MN','28':'MS','29':'MO','30':'MT','31':'NE',
-  '32':'NV','33':'NH','34':'NJ','35':'NM','36':'NY','37':'NC','38':'ND',
-  '39':'OH','40':'OK','41':'OR','42':'PA','44':'RI','45':'SC','46':'SD',
-  '47':'TN','48':'TX','49':'UT','50':'VT','51':'VA','53':'WA','54':'WV',
-  '55':'WI','56':'WY'
-};
-const SNAMES={
-  'AL':'Alabama','AK':'Alaska','AZ':'Arizona','AR':'Arkansas','CA':'California',
-  'CO':'Colorado','CT':'Connecticut','DE':'Delaware','DC':'D.C.','FL':'Florida',
-  'GA':'Georgia','HI':'Hawaii','ID':'Idaho','IL':'Illinois','IN':'Indiana',
-  'IA':'Iowa','KS':'Kansas','KY':'Kentucky','LA':'Louisiana','ME':'Maine',
-  'MD':'Maryland','MA':'Massachusetts','MI':'Michigan','MN':'Minnesota',
-  'MS':'Mississippi','MO':'Missouri','MT':'Montana','NE':'Nebraska','NV':'Nevada',
-  'NH':'New Hampshire','NJ':'New Jersey','NM':'New Mexico','NY':'New York',
-  'NC':'North Carolina','ND':'North Dakota','OH':'Ohio','OK':'Oklahoma',
-  'OR':'Oregon','PA':'Pennsylvania','RI':'Rhode Island','SC':'South Carolina',
-  'SD':'South Dakota','TN':'Tennessee','TX':'Texas','UT':'Utah','VT':'Vermont',
-  'VA':'Virginia','WA':'Washington','WV':'West Virginia','WI':'Wisconsin','WY':'Wyoming'
-};
-const CNAMES={
-  '840':'United States','124':'Canada','484':'Mexico','826':'United Kingdom',
-  '250':'France','276':'Germany','380':'Italy','724':'Spain','528':'Netherlands',
-  '756':'Switzerland','40':'Austria','56':'Belgium','372':'Ireland','300':'Greece',
-  '792':'Turkey','643':'Russia','784':'UAE','634':'Qatar','682':'Saudi Arabia',
-  '356':'India','156':'China','392':'Japan','410':'South Korea','344':'Hong Kong',
-  '702':'Singapore','764':'Thailand','458':'Malaysia','360':'Indonesia','608':'Philippines',
-  '704':'Vietnam','36':'Australia','554':'New Zealand','76':'Brazil',
-  '32':'Argentina','170':'Colombia','152':'Chile','604':'Peru','710':'South Africa',
-  '404':'Kenya','231':'Ethiopia','566':'Nigeria','504':'Morocco','818':'Egypt',
-  '376':'Israel','462':'Maldives',
-};
+const FIPS={'01':'AL','02':'AK','04':'AZ','05':'AR','06':'CA','08':'CO','09':'CT','10':'DE','11':'DC','12':'FL','13':'GA','15':'HI','16':'ID','17':'IL','18':'IN','19':'IA','20':'KS','21':'KY','22':'LA','23':'ME','24':'MD','25':'MA','26':'MI','27':'MN','28':'MS','29':'MO','30':'MT','31':'NE','32':'NV','33':'NH','34':'NJ','35':'NM','36':'NY','37':'NC','38':'ND','39':'OH','40':'OK','41':'OR','42':'PA','44':'RI','45':'SC','46':'SD','47':'TN','48':'TX','49':'UT','50':'VT','51':'VA','53':'WA','54':'WV','55':'WI','56':'WY'};
+const SNAMES={'AL':'Alabama','AK':'Alaska','AZ':'Arizona','AR':'Arkansas','CA':'California','CO':'Colorado','CT':'Connecticut','DE':'Delaware','DC':'D.C.','FL':'Florida','GA':'Georgia','HI':'Hawaii','ID':'Idaho','IL':'Illinois','IN':'Indiana','IA':'Iowa','KS':'Kansas','KY':'Kentucky','LA':'Louisiana','ME':'Maine','MD':'Maryland','MA':'Massachusetts','MI':'Michigan','MN':'Minnesota','MS':'Mississippi','MO':'Missouri','MT':'Montana','NE':'Nebraska','NV':'Nevada','NH':'New Hampshire','NJ':'New Jersey','NM':'New Mexico','NY':'New York','NC':'North Carolina','ND':'North Dakota','OH':'Ohio','OK':'Oklahoma','OR':'Oregon','PA':'Pennsylvania','RI':'Rhode Island','SC':'South Carolina','SD':'South Dakota','TN':'Tennessee','TX':'Texas','UT':'Utah','VT':'Vermont','VA':'Virginia','WA':'Washington','WV':'West Virginia','WI':'Wisconsin','WY':'Wyoming'};
+const CNAMES={'840':'United States','124':'Canada','484':'Mexico','826':'United Kingdom','250':'France','276':'Germany','380':'Italy','724':'Spain','528':'Netherlands','756':'Switzerland','40':'Austria','56':'Belgium','372':'Ireland','300':'Greece','792':'Turkey','643':'Russia','784':'UAE','634':'Qatar','682':'Saudi Arabia','356':'India','156':'China','392':'Japan','410':'South Korea','344':'Hong Kong','702':'Singapore','764':'Thailand','458':'Malaysia','360':'Indonesia','608':'Philippines','704':'Vietnam','36':'Australia','554':'New Zealand','76':'Brazil','32':'Argentina','170':'Colombia','152':'Chile','604':'Peru','710':'South Africa','404':'Kenya','231':'Ethiopia','566':'Nigeria','504':'Morocco','818':'Egypt','376':'Israel','462':'Maldives'};
 
-// ── State ──────────────────────────────────────────────────────────────
-let vCountries=new Set();
-let vStates=new Set();
-let dots=[];
-let dotsRafId=null;
-let topoReady=false;
-let pendingRoutes=[];
-let usLandClipPath=null;
-let updateLabels=function(){};
+// ── Canvas setup ───────────────────────────────────────────────────────
+const W=window.innerWidth,H=window.innerHeight;
+const DPR=window.devicePixelRatio||1;
+const canvas=document.getElementById('g');
+canvas.width=W*DPR; canvas.height=H*DPR;
+canvas.style.width=W+'px'; canvas.style.height=H+'px';
+const ctx=canvas.getContext('2d');
+ctx.scale(DPR,DPR);
 
-// Drag / inertia / auto-rotate state
-let isDragging=false;
-let inertiaActive=false;
-let rotVx=0,rotVy=0;
-let prevTouchX=0,prevTouchY=0;
-let t0=null,r0=null,p0=null,s0=null;
-let rafPending=false;
-const FRICTION=0.91;
-const VEL_MIN=0.04;
-
-// Auto-rotation
-const AUTO_DELAY_MS=2200;   // idle time before rotation resumes
-const AUTO_SPEED=0.055;     // degrees per frame (≈3.3°/s at 60fps)
-const AUTO_FPS_MS=1000/30;  // cap auto-rotate redraws at 30fps
-let lastTouchEndTime=-(AUTO_DELAY_MS+1); // start auto-rotating immediately
-let lastAutoRotTs=0;
-
-// ── Globe projection ───────────────────────────────────────────────────
-const W=window.innerWidth;
-const H=window.innerHeight;
 const R=Math.min(W,H)*${scale};
 const OFFSET=${verticalOffset};
-const CX=W/2, CY=H/2-OFFSET;
+const CX=W/2,CY=H/2-OFFSET;
 
-const proj=d3.geoOrthographic()
-  .scale(R).translate([CX,CY])
-  .rotate([0,-20]).clipAngle(90);
-const path=d3.geoPath().projection(proj);
+const proj=d3.geoOrthographic().scale(R).translate([CX,CY]).rotate([0,-20]).clipAngle(90);
+const geoPath=d3.geoPath().projection(proj).context(ctx);
+const gratData=d3.geoGraticule()();
 
-const svg=d3.select('#g').attr('width',W).attr('height',H);
+// ── Data ───────────────────────────────────────────────────────────────
+let worldFeatures=[],usFeatures=[],usCountryFeature=null;
+let cLabelData=[],sLabelData=[];
+let vCountries=new Set(),vStates=new Set();
+let routeData=[],animDots=[];
+let topoReady=false,pendingRoutes=[];
 
-// Water sphere
-const sphere=svg.append('circle')
-  .attr('cx',CX).attr('cy',CY).attr('r',R)
-  .attr('fill',WATER);
+// ── Interaction state ──────────────────────────────────────────────────
+let isDragging=false,inertiaActive=false;
+let rotVx=0,rotVy=0;
+let prevTouchX=0,prevTouchY=0;
+let t0=null,r0=null,p0=null,s0=null,tapStart=null;
+const FRICTION=0.91,VEL_MIN=0.04;
+const AUTO_DELAY_MS=2200,AUTO_SPEED=0.055;
+let lastTouchEndTime=-(AUTO_DELAY_MS+1);
 
-// Graticule
-const grat=svg.append('path')
-  .datum(d3.geoGraticule()())
-  .attr('d',path).attr('fill','none')
-  .attr('stroke',GRAT).attr('stroke-width',0.4);
+function isVisible(ll){return d3.geoDistance(ll,[-proj.rotate()[0],-proj.rotate()[1]])<Math.PI/2;}
 
-const gCountries=svg.append('g');
-const gStates=svg.append('g');
-const gRoutes=svg.append('g');
-const gLabels=svg.append('g').attr('pointer-events','none');
+// ── Draw ───────────────────────────────────────────────────────────────
+function draw(moving){
+  const sc=proj.scale();
+  ctx.clearRect(0,0,W,H);
 
-// ── Defs ───────────────────────────────────────────────────────────────
-const defs=svg.append('defs');
+  // Water
+  ctx.beginPath();
+  ctx.arc(CX,CY,sc,0,2*Math.PI);
+  ctx.fillStyle=WATER; ctx.fill();
 
-const clipCircle=defs.append('clipPath').attr('id','globeClip')
-  .append('circle').attr('cx',CX).attr('cy',CY).attr('r',R);
+  // Graticule
+  ctx.beginPath();
+  geoPath(gratData);
+  ctx.strokeStyle=GRAT; ctx.lineWidth=0.4; ctx.globalAlpha=1; ctx.stroke();
 
-const dotGlow=defs.append('filter')
-  .attr('id','dotGlow')
-  .attr('x','-200%').attr('y','-200%')
-  .attr('width','500%').attr('height','500%');
-dotGlow.append('feGaussianBlur')
-  .attr('in','SourceGraphic').attr('stdDeviation',4).attr('result','blur');
-const dotMerge=dotGlow.append('feMerge');
-dotMerge.append('feMergeNode').attr('in','blur');
-dotMerge.append('feMergeNode').attr('in','blur');
-dotMerge.append('feMergeNode').attr('in','SourceGraphic');
+  // Countries
+  worldFeatures.forEach(f=>{
+    const vis=vCountries.has(String(f.id));
+    ctx.beginPath(); geoPath(f);
+    if(vis&&!moving){ctx.shadowBlur=14;ctx.shadowColor=ACCENT_GLOW;}
+    ctx.fillStyle=vis?ACCENT:LAND; ctx.globalAlpha=vis?1:0.9; ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.strokeStyle=vis?ACCENT_STROKE:BORDER; ctx.lineWidth=vis?1:0.5;
+    ctx.globalAlpha=vis?0.9:0.7; ctx.stroke(); ctx.globalAlpha=1;
+  });
 
-const visitedGlow=defs.append('filter')
-  .attr('id','visitedGlow')
-  .attr('x','-40%').attr('y','-40%')
-  .attr('width','180%').attr('height','180%');
-visitedGlow.append('feDropShadow')
-  .attr('dx',0).attr('dy',0).attr('stdDeviation',5)
-  .attr('flood-color',ACCENT_GLOW).attr('flood-opacity',1);
-
-const blur=Math.round(R*0.06);
-const nightFilter=defs.append('filter')
-  .attr('id','nightBlur')
-  .attr('x','-50%').attr('y','-50%')
-  .attr('width','200%').attr('height','200%');
-nightFilter.append('feGaussianBlur').attr('in','SourceGraphic').attr('stdDeviation',blur);
-
-const gNight=svg.append('g').attr('pointer-events','none').attr('clip-path','url(#globeClip)');
-const nightPath=gNight.append('path')
-  .attr('fill','rgba(0,4,18,0.35)')
-  .attr('filter','url(#nightBlur)')
-  .attr('stroke','none');
-
-// ── Night terminator ───────────────────────────────────────────────────
-function getSolarPoint(){
-  const now=new Date();
-  const start=new Date(Date.UTC(now.getUTCFullYear(),0,1));
-  const doy=Math.floor((now-start)/86400000)+1;
-  const decl=-23.45*Math.cos(2*Math.PI*(doy+10)/365);
-  const utcH=now.getUTCHours()+now.getUTCMinutes()/60+now.getUTCSeconds()/3600;
-  let lon=-(utcH-12)*15;
-  lon=((lon+180)%360+360)%360-180;
-  return[lon,decl];
-}
-function updateNight(){
-  const[sLon,sLat]=getSolarPoint();
-  const nLon=sLon>=0?sLon-180:sLon+180;
-  const nLat=-sLat;
-  const circle=d3.geoCircle().center([nLon,nLat]).radius(90)();
-  nightPath.datum(circle).attr('d',path);
-}
-
-// Returns true if [lon,lat] is on the visible hemisphere
-function isVisible(lonLat){
-  const r=proj.rotate();
-  const toRad=Math.PI/180;
-  const lon=(lonLat[0]+r[0])*toRad;
-  const lat=(lonLat[1]+r[1])*toRad;
-  return Math.cos(lat)*Math.cos(lon)>0;
-}
-
-// ── Recolor helpers ───────────────────────────────────────────────────
-function cfill(id){return vCountries.has(String(id))?ACCENT:LAND;}
-function sfill(fips){
-  const k=String(fips).padStart(2,'0');
-  const s=FIPS[k];
-  return s&&vStates.has(s)?ACCENT:LAND;
-}
-function isVisitedCountry(d){return vCountries.has(String(d.id));}
-function isVisitedState(d){
-  const k=String(d.id).padStart(2,'0');
-  const s=FIPS[k];
-  return !!(s&&vStates.has(s));
-}
-function recolor(){
-  gCountries.selectAll('.country')
-    .attr('fill',d=>cfill(d.id))
-    .attr('fill-opacity',d=>isVisitedCountry(d)?1:0.90)
-    .attr('stroke',d=>isVisitedCountry(d)?ACCENT_STROKE:BORDER)
-    .attr('stroke-width',d=>isVisitedCountry(d)?1:0.5)
-    .attr('stroke-opacity',d=>isVisitedCountry(d)?0.9:0.70)
-    .attr('filter',d=>isVisitedCountry(d)?'url(#visitedGlow)':null);
-  gStates.selectAll('.state')
-    .attr('fill',d=>sfill(d.id))
-    .attr('fill-opacity',d=>isVisitedState(d)?1:0.90)
-    .attr('stroke',d=>isVisitedState(d)?ACCENT_STROKE:BORDER)
-    .attr('stroke-width',d=>isVisitedState(d)?0.9:0.4)
-    .attr('stroke-opacity',d=>isVisitedState(d)?0.9:0.65)
-    .attr('filter',d=>isVisitedState(d)?'url(#visitedGlow)':null);
-}
-
-// ── Reproject ─────────────────────────────────────────────────────────
-// skipExtras = true during drag/inertia/auto-rotate to skip labels
-function reproject(skipExtras){
-  gCountries.selectAll('.country').attr('d',path);
-  gStates.selectAll('.state').attr('d',path);
-  if(usLandClipPath)usLandClipPath.attr('d',path);
-  gRoutes.selectAll('.route,.route-hit').attr('d',path);
-  grat.attr('d',path);
-  if(!skipExtras){
-    nightPath.attr('d',path);
-    updateLabels();
+  // US States clipped to US boundary
+  if(usCountryFeature){
+    ctx.save();
+    ctx.beginPath(); geoPath(usCountryFeature); ctx.clip();
+    usFeatures.forEach(f=>{
+      const k=String(f.id).padStart(2,'0'),s=FIPS[k];
+      const vis=!!(s&&vStates.has(s));
+      ctx.beginPath(); geoPath(f);
+      if(vis&&!moving){ctx.shadowBlur=14;ctx.shadowColor=ACCENT_GLOW;}
+      ctx.fillStyle=vis?ACCENT:LAND; ctx.globalAlpha=vis?1:0.9; ctx.fill();
+      ctx.shadowBlur=0;
+      ctx.strokeStyle=vis?ACCENT_STROKE:BORDER; ctx.lineWidth=vis?0.9:0.4;
+      ctx.globalAlpha=vis?0.9:0.65; ctx.stroke(); ctx.globalAlpha=1;
+    });
+    ctx.restore();
   }
+
+  // Routes
+  routeData.forEach(r=>{
+    if(r.fromLon==null)return;
+    const feat={type:'Feature',geometry:{type:'LineString',coordinates:[[r.fromLon,r.fromLat],[r.toLon,r.toLat]]}};
+    ctx.beginPath(); geoPath(feat);
+    ctx.strokeStyle=ACCENT; ctx.lineWidth=1.8; ctx.globalAlpha=0.6; ctx.lineCap='round'; ctx.stroke();
+    ctx.globalAlpha=1;
+  });
+
+  // Labels (always — canvas text is cheap)
+  drawLabels(sc);
 }
 
-// ── Animated dots ─────────────────────────────────────────────────────
-function animateDots(ts){
-  dots.forEach(function(o){
+function drawLabels(sc){
+  const C_LO=R*1.3,C_HI=R*2.0,S_LO=R*2.0,S_HI=R*3.0;
+  const cOp=Math.max(0,Math.min(0.75,(sc-C_LO)/(C_HI-C_LO)*0.75));
+  const sOp=Math.max(0,Math.min(0.80,(sc-S_LO)/(S_HI-S_LO)*0.80));
+  const cSz=Math.max(7,Math.min(13,9*(sc/R)));
+  const sSz=Math.max(6,Math.min(11,8*(sc/R)));
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  if(cOp>0){
+    ctx.font=\`600 \${cSz}px system-ui,-apple-system,sans-serif\`;
+    cLabelData.forEach(d=>{
+      if(!isVisible(d.centroid))return;
+      const pt=proj(d.centroid); if(!pt)return;
+      ctx.globalAlpha=cOp; ctx.fillStyle='#fff'; ctx.fillText(d.name,pt[0],pt[1]);
+    });
+  }
+  if(sOp>0){
+    ctx.font=\`600 \${sSz}px system-ui,-apple-system,sans-serif\`;
+    sLabelData.forEach(d=>{
+      if(!isVisible(d.centroid))return;
+      const pt=proj(d.centroid); if(!pt)return;
+      ctx.globalAlpha=sOp; ctx.fillStyle='rgba(255,255,255,0.75)';
+      ctx.fillText(sc>=R*3.5?d.name:d.code,pt[0],pt[1]);
+    });
+  }
+  ctx.globalAlpha=1;
+}
+
+// ── Animated dots ──────────────────────────────────────────────────────
+function drawDots(ts){
+  animDots.forEach(o=>{
     const t=(((ts/o.period)+o.offset)%1+1)%1;
     const coord=o.interp(t);
-    const pt=proj(coord);
-    if(pt&&isVisible(coord)){
-      o.dot.attr('cx',pt[0]).attr('cy',pt[1]).attr('opacity',1);
-      o.halo.attr('cx',pt[0]).attr('cy',pt[1]).attr('opacity',0.55);
-    }else{
-      o.dot.attr('opacity',0);o.halo.attr('opacity',0);
-    }
+    if(!isVisible(coord))return;
+    const pt=proj(coord); if(!pt)return;
+    ctx.beginPath(); ctx.arc(pt[0],pt[1],7,0,2*Math.PI);
+    ctx.fillStyle=ACCENT; ctx.globalAlpha=0.3;
+    ctx.shadowBlur=12; ctx.shadowColor=ACCENT; ctx.fill(); ctx.shadowBlur=0;
+    ctx.beginPath(); ctx.arc(pt[0],pt[1],3,0,2*Math.PI);
+    ctx.fillStyle='#fff'; ctx.globalAlpha=1; ctx.fill();
   });
-  if(dots.length>0)dotsRafId=requestAnimationFrame(animateDots);
-  else dotsRafId=null;
 }
 
-function drawRoutes(routes){
-  if(!topoReady){pendingRoutes=routes;return;}
-  gRoutes.selectAll('*').remove();
-  dots=[];
-  if(dotsRafId){cancelAnimationFrame(dotsRafId);dotsRafId=null;}
-  routes.forEach(function(r,i){
-    if(r.fromLon==null||r.toLon==null)return;
-    const feature={type:'Feature',geometry:{type:'LineString',coordinates:[[r.fromLon,r.fromLat],[r.toLon,r.toLat]]}};
-    gRoutes.append('path').attr('class','route-hit').datum(feature).attr('d',path)
-      .attr('fill','none').attr('stroke','transparent').attr('stroke-width',18)
-      .style('cursor','pointer')
-      .on('click',function(){window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:'routeTap',flightId:r.flightId}));});
-    gRoutes.append('path').attr('class','route').datum(feature).attr('d',path)
-      .attr('fill','none').attr('stroke',ACCENT).attr('stroke-width',1.8)
-      .attr('stroke-opacity',0.6).attr('stroke-linecap','round').style('pointer-events','none');
-    const halo=gRoutes.append('circle').attr('r',7).attr('fill',ACCENT).attr('opacity',0)
-      .attr('filter','url(#dotGlow)').attr('pointer-events','none');
-    const dot=gRoutes.append('circle').attr('r',3).attr('fill','#fff').attr('opacity',0)
-      .attr('pointer-events','none');
-    const interp=d3.geoInterpolate([r.fromLon,r.fromLat],[r.toLon,r.toLat]);
-    dots.push({dot,halo,interp,period:3200+i*430,offset:i*0.23});
-  });
-  if(dots.length>0&&!dotsRafId)dotsRafId=requestAnimationFrame(animateDots);
+function buildRoutes(routes){
+  routeData=routes.filter(r=>r.fromLon!=null);
+  animDots=routeData.map((r,i)=>({
+    interp:d3.geoInterpolate([r.fromLon,r.fromLat],[r.toLon,r.toLat]),
+    period:3200+i*430,offset:i*0.23
+  }));
 }
+window.__globeUpdateRoutes=function(routes){buildRoutes(routes);};
 
-window.__globeUpdateRoutes=function(routes){drawRoutes(routes);};
-
-// ── Unified animation loop (inertia + auto-rotation) ──────────────────
+// ── Animation loop ─────────────────────────────────────────────────────
 function animateLoop(ts){
-  let moved=false;
-
+  let moving=isDragging;
   if(inertiaActive){
-    rotVx*=FRICTION;rotVy*=FRICTION;
+    rotVx*=FRICTION; rotVy*=FRICTION;
     if(Math.abs(rotVx)<VEL_MIN&&Math.abs(rotVy)<VEL_MIN){
-      inertiaActive=false;rotVx=0;rotVy=0;
-      lastTouchEndTime=ts;
-      reproject(false);
+      inertiaActive=false; rotVx=0; rotVy=0; lastTouchEndTime=ts;
     }else{
       const r=proj.rotate();
       proj.rotate([r[0]+rotVx,Math.max(-90,Math.min(90,r[1]+rotVy))]);
-      reproject(true);
-      moved=true;
-    }
-    moved=true;
-  }
-
-  if(!isDragging&&!inertiaActive){
-    const idleMs=ts-lastTouchEndTime;
-    if(idleMs>AUTO_DELAY_MS){
-      if(ts-lastAutoRotTs>=AUTO_FPS_MS){
-        lastAutoRotTs=ts;
-        const r=proj.rotate();
-        proj.rotate([r[0]+AUTO_SPEED,r[1]]);
-        reproject(true);
-        moved=true;
-      }
+      moving=true;
     }
   }
-
+  if(!isDragging&&!inertiaActive&&ts-lastTouchEndTime>AUTO_DELAY_MS){
+    const r=proj.rotate();
+    proj.rotate([r[0]+AUTO_SPEED,r[1]]);
+    moving=true;
+  }
+  draw(moving);
+  if(animDots.length>0)drawDots(ts);
   requestAnimationFrame(animateLoop);
 }
 requestAnimationFrame(animateLoop);
 
-// ── Load world + US atlas ─────────────────────────────────────────────
+// ── Load data ──────────────────────────────────────────────────────────
 Promise.all([
   fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(r=>r.json()),
   fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json').then(r=>r.json()),
 ]).then(([world,us])=>{
   const countries=topojson.feature(world,world.objects.countries);
   const states=topojson.feature(us,us.objects.states);
-
-  const usFeature=countries.features.find(f=>+f.id===840);
-  if(usFeature){
-    usLandClipPath=defs.append('clipPath').attr('id','usLandClip')
-      .append('path').datum(usFeature).attr('d',path);
-    gStates.attr('clip-path','url(#usLandClip)');
-  }
-
-  gCountries.selectAll('.country')
-    .data(countries.features.filter(f=>+f.id!==840))
-    .enter().append('path').attr('class','country')
-    .attr('d',path)
-    .attr('fill',LAND).attr('fill-opacity',0.90)
-    .attr('stroke',BORDER).attr('stroke-width',0.5).attr('stroke-opacity',0.70)
-    .on('click',(ev,d)=>{
-      const name=CNAMES[String(d.id)]||'Unknown';
-      window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(
-        JSON.stringify({type:'tap',name,id:String(d.id),isState:false}));
-    });
-
-  gStates.selectAll('.state')
-    .data(states.features)
-    .enter().append('path').attr('class','state')
-    .attr('d',path)
-    .attr('fill',LAND).attr('fill-opacity',0.90)
-    .attr('stroke',BORDER).attr('stroke-width',0.4).attr('stroke-opacity',0.65)
-    .on('click',(ev,d)=>{
-      const k=String(d.id).padStart(2,'0');
-      const s=FIPS[k]||'';
-      const name=SNAMES[s]||s;
-      window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(
-        JSON.stringify({type:'tap',name,id:s,isState:true}));
-    });
-
-  recolor();
-
-  // ── Labels ─────────────────────────────────────────────────────────
-  const cData=countries.features
-    .filter(f=>+f.id!==840&&CNAMES[String(f.id)])
-    .map(f=>({centroid:d3.geoCentroid(f),name:CNAMES[String(f.id)],id:f.id}));
-
-  const sData=states.features.map(f=>{
-    const k=String(f.id).padStart(2,'0');
-    const code=FIPS[k]||'';
+  usCountryFeature=countries.features.find(f=>+f.id===840)||null;
+  worldFeatures=countries.features.filter(f=>+f.id!==840);
+  usFeatures=states.features;
+  cLabelData=countries.features.filter(f=>+f.id!==840&&CNAMES[String(f.id)])
+    .map(f=>({centroid:d3.geoCentroid(f),name:CNAMES[String(f.id)]}));
+  sLabelData=states.features.map(f=>{
+    const k=String(f.id).padStart(2,'0'),code=FIPS[k]||'';
     return{centroid:d3.geoCentroid(f),code,name:SNAMES[code]||code};
   }).filter(d=>d.code);
-
-  gLabels.selectAll('.clabel')
-    .data(cData).enter().append('text').attr('class','clabel')
-    .attr('text-anchor','middle').attr('dominant-baseline','middle')
-    .attr('fill','#fff').attr('opacity',0)
-    .attr('font-family','system-ui,-apple-system,sans-serif')
-    .attr('font-weight','600').attr('letter-spacing','0.3')
-    .text(d=>d.name);
-
-  gLabels.selectAll('.slabel')
-    .data(sData).enter().append('text').attr('class','slabel')
-    .attr('text-anchor','middle').attr('dominant-baseline','middle')
-    .attr('fill','rgba(255,255,255,0.75)').attr('opacity',0)
-    .attr('font-family','system-ui,-apple-system,sans-serif')
-    .attr('font-weight','600')
-    .text(d=>d.code);
-
-  const C_LO=R*1.3,C_HI=R*2.0;
-  const S_LO=R*2.0,S_HI=R*3.0;
-
-  updateLabels=function(){
-    const sc=proj.scale();
-    const cOpacity=Math.max(0,Math.min(0.75,(sc-C_LO)/(C_HI-C_LO)*0.75));
-    const sOpacity=Math.max(0,Math.min(0.80,(sc-S_LO)/(S_HI-S_LO)*0.80));
-    const cSize=Math.max(7,Math.min(13,9*(sc/R)));
-    const sSize=Math.max(6,Math.min(11,8*(sc/R)));
-    gLabels.selectAll('.clabel').each(function(d){
-      const pt=proj(d.centroid);
-      const vis=pt&&isVisible(d.centroid);
-      d3.select(this)
-        .attr('x',pt?pt[0]:0).attr('y',pt?pt[1]:0)
-        .attr('font-size',cSize)
-        .attr('opacity',vis?cOpacity:0);
-    });
-    gLabels.selectAll('.slabel').each(function(d){
-      const pt=proj(d.centroid);
-      const vis=pt&&isVisible(d.centroid);
-      const label=proj.scale()>=R*3.5?d.name:d.code;
-      d3.select(this).text(label)
-        .attr('x',pt?pt[0]:0).attr('y',pt?pt[1]:0)
-        .attr('font-size',sSize)
-        .attr('opacity',vis?sOpacity:0);
-    });
-  };
-
-  updateLabels();
   topoReady=true;
-  drawRoutes(pendingRoutes);
-  updateNight();
-  setInterval(updateNight,60000);
+  buildRoutes(pendingRoutes);
 }).catch(()=>{});
 
-// ── Touch: rotation + pinch zoom ─────────────────────────────────────
+// ── Touch ──────────────────────────────────────────────────────────────
 document.addEventListener('touchstart',e=>{
   if(e.touches.length===2)e.preventDefault();
-  // Stop inertia immediately; record touch time so auto-rotate pauses
-  inertiaActive=false;rotVx=0;rotVy=0;
-  lastTouchEndTime=performance.now(); // keep auto-rotate paused while touching
-  isDragging=false;
+  inertiaActive=false; rotVx=0; rotVy=0; isDragging=false;
+  lastTouchEndTime=performance.now();
+  tapStart={x:e.touches[0].clientX,y:e.touches[0].clientY};
   if(e.touches.length===1){
     t0={x:e.touches[0].clientX,y:e.touches[0].clientY};
     r0=[...proj.rotate()];
-    prevTouchX=e.touches[0].clientX;
-    prevTouchY=e.touches[0].clientY;
+    prevTouchX=e.touches[0].clientX; prevTouchY=e.touches[0].clientY;
     p0=null;
-  }else if(e.touches.length===2){
+  }else{
     const a=e.touches[0],b=e.touches[1];
     p0=Math.hypot(b.clientX-a.clientX,b.clientY-a.clientY);
-    s0=proj.scale();
-    t0=null;
+    s0=proj.scale(); t0=null;
   }
 },{passive:false});
 
 document.addEventListener('touchmove',e=>{
-  e.preventDefault();
-  lastTouchEndTime=performance.now();
+  e.preventDefault(); lastTouchEndTime=performance.now();
   if(e.touches.length===1&&t0&&r0){
     isDragging=true;
     const cx=e.touches[0].clientX,cy=e.touches[0].clientY;
-    const dx=cx-t0.x,dy=cy-t0.y;
-    const k=0.35;
-    const vx=(cx-prevTouchX)*k,vy=-(cy-prevTouchY)*k;
-    rotVx=rotVx*0.4+vx*0.6;
-    rotVy=rotVy*0.4+vy*0.6;
-    prevTouchX=cx;prevTouchY=cy;
+    const dx=cx-t0.x,dy=cy-t0.y,k=0.35;
+    rotVx=rotVx*0.4+(cx-prevTouchX)*k*0.6;
+    rotVy=rotVy*0.4-(cy-prevTouchY)*k*0.6;
+    prevTouchX=cx; prevTouchY=cy;
     proj.rotate([r0[0]+dx*k,Math.max(-90,Math.min(90,r0[1]-dy*k))]);
-    if(!rafPending){rafPending=true;requestAnimationFrame(()=>{rafPending=false;reproject(true);});}
   }else if(e.touches.length===2&&p0!==null){
     isDragging=true;
     const a=e.touches[0],b=e.touches[1];
     const d=Math.hypot(b.clientX-a.clientX,b.clientY-a.clientY);
-    const ns=Math.max(R*0.8,Math.min(R*6,s0*d/p0));
-    proj.scale(ns);
-    sphere.attr('r',ns);
-    clipCircle.attr('r',ns);
-    if(!rafPending){rafPending=true;requestAnimationFrame(()=>{rafPending=false;reproject(false);});}
+    proj.scale(Math.max(R*0.8,Math.min(R*6,s0*d/p0)));
   }
 },{passive:false});
 
 document.addEventListener('touchend',e=>{
-  t0=null;p0=null;
-  isDragging=false;
+  const wasDragging=isDragging;
+  isDragging=false; t0=null; p0=null;
   lastTouchEndTime=performance.now();
-  if(Math.abs(rotVx)>VEL_MIN||Math.abs(rotVy)>VEL_MIN){
-    inertiaActive=true;
-  }else{
-    // No inertia — do a clean reproject with labels
-    reproject(false);
+  if(Math.abs(rotVx)>VEL_MIN||Math.abs(rotVy)>VEL_MIN)inertiaActive=true;
+  // Tap detection
+  if(!wasDragging&&tapStart&&topoReady){
+    const x=tapStart.x,y=tapStart.y;
+    const ll=proj.invert([x,y]);
+    if(ll){
+      let hit=false;
+      for(const r of routeData){
+        const interp=d3.geoInterpolate([r.fromLon,r.fromLat],[r.toLon,r.toLat]);
+        for(let t=0;t<=1;t+=0.05){
+          const pt=proj(interp(t));
+          if(pt&&Math.hypot(pt[0]-x,pt[1]-y)<14){
+            window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:'routeTap',flightId:r.flightId}));
+            hit=true; break;
+          }
+        }
+        if(hit)break;
+      }
+      if(!hit){
+        for(const f of usFeatures){
+          if(d3.geoContains(f,ll)){
+            const k=String(f.id).padStart(2,'0'),s=FIPS[k]||'';
+            window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:'tap',name:SNAMES[s]||s,id:s,isState:true}));
+            hit=true; break;
+          }
+        }
+      }
+      if(!hit){
+        for(const f of worldFeatures){
+          if(d3.geoContains(f,ll)){
+            window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:'tap',name:CNAMES[String(f.id)]||'Unknown',id:String(f.id),isState:false}));
+            break;
+          }
+        }
+      }
+    }
   }
+  tapStart=null;
 });
 
-// ── Messages from React Native ────────────────────────────────────────
+// ── Messages ───────────────────────────────────────────────────────────
 function onMsg(e){
   try{
     const d=JSON.parse(e.data);
-    if(d.type==='update'){
-      vCountries=new Set(d.countries.map(String));
-      vStates=new Set(d.states);
-      recolor();
-    }
-  }catch(err){}
+    if(d.type==='update'){vCountries=new Set(d.countries.map(String));vStates=new Set(d.states);}
+  }catch{}
 }
 window.addEventListener('message',onMsg);
 document.addEventListener('message',onMsg);
-window.__globeUpdate=function(countries,states){
-  vCountries=new Set(countries.map(String));
-  vStates=new Set(states);
-  recolor();
-};
+window.__globeUpdate=function(c,s){vCountries=new Set(c.map(String));vStates=new Set(s);};
 </script>
 </body>
 </html>`;
