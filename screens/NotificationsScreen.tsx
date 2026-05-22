@@ -77,34 +77,38 @@ export default function NotificationsScreen({ theme, isDark, currentUserId, isPr
   }
 
   function renderNotification({ item }: { item: Notification }) {
-    const isSameFlight = item.type === 'same_flight';
-    const isComment = item.type === 'comment';
-    const verb = isComment ? ' commented on your ' : isSameFlight ? ' is on your ' : ' liked your ';
+    if (item.type === 'new_follower') {
+      return (
+        <View style={[styles.item, { borderBottomColor: theme.sep }]}>
+          <InitialsBubble initials={item.authorInitials} avatarUrl={item.authorAvatarUrl} theme={theme} />
+          <View style={styles.itemBody}>
+            <Text style={[styles.itemText, { color: theme.text }]}>
+              <Text style={styles.itemName}>{item.authorName}</Text>
+              {item.authorUsername ? <Text style={[styles.itemHandle, { color: theme.textMuted }]}> @{item.authorUsername}</Text> : null}
+              <Text style={{ fontWeight: '400' }}> started following you</Text>
+            </Text>
+            <Text style={[styles.itemTime, { color: theme.textMuted }]}>{item.timeAgo}</Text>
+          </View>
+          <Ionicons name="person-add" size={14} color={theme.accent} style={styles.itemIcon} />
+        </View>
+      );
+    }
+
     return (
       <View style={[styles.item, { borderBottomColor: theme.sep }]}>
         <InitialsBubble initials={item.authorInitials} theme={theme} />
         <View style={styles.itemBody}>
           <Text style={[styles.itemText, { color: theme.text }]}>
             <Text style={styles.itemName}>{item.authorName}</Text>
-            {verb}
+            {' is on your '}
             <Text style={[styles.itemRoute, { color: theme.accent }]}>
               {item.fromCode} → {item.toCode}
             </Text>
             {' flight'}
           </Text>
-          {isComment && item.text ? (
-            <Text style={[styles.itemComment, { color: theme.textSub }]} numberOfLines={2}>
-              "{item.text}"
-            </Text>
-          ) : null}
           <Text style={[styles.itemTime, { color: theme.textMuted }]}>{item.timeAgo}</Text>
         </View>
-        <Ionicons
-          name={isComment ? 'chatbubble' : isSameFlight ? 'airplane' : 'heart'}
-          size={14}
-          color={isComment ? theme.accent : isSameFlight ? theme.accent : '#FF3B30'}
-          style={styles.itemIcon}
-        />
+        <Ionicons name="airplane" size={14} color={theme.accent} style={styles.itemIcon} />
       </View>
     );
   }
@@ -184,7 +188,7 @@ export default function NotificationsScreen({ theme, isDark, currentUserId, isPr
           </Text>
           <Text style={[styles.emptySubtext, { color: theme.textMuted }]}>
             {section === 'notifications'
-              ? "When someone likes or comments on your flights, you'll see it here"
+              ? "When someone joins your flight, you'll see it here"
               : 'New follower requests will appear here'}
           </Text>
         </View>
@@ -241,7 +245,6 @@ const styles = StyleSheet.create({
   itemName: { fontWeight: '700' },
   itemHandle: { fontWeight: '400', fontSize: 13 },
   itemRoute: { fontWeight: '700' },
-  itemComment: { fontSize: 13, fontStyle: 'italic', lineHeight: 19 },
   itemTime: { fontSize: 11, fontWeight: '500', marginTop: 3, letterSpacing: 0.1 },
   itemIcon: { marginTop: 3, flexShrink: 0 },
 

@@ -15,6 +15,7 @@ import { Flight } from '../data/mockData';
 import { UserProfile } from '../App';
 import SettingsScreen from './SettingsScreen';
 import { getFollowCounts } from '../services/db';
+import { supabase } from '../lib/supabase';
 import FollowListModal from '../components/FollowListModal';
 import GlobeView from '../components/GlobeView';
 import TripCard from '../components/TripCard';
@@ -146,6 +147,23 @@ export default function ProfileScreen({
       }
     }, [userProfile.id])
   );
+
+  // Real-time follower count — increments/decrements as follows change
+  useEffect(() => {
+    if (!userProfile.id) return;
+    const channel = supabase
+      .channel(`follows:${userProfile.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'follows',
+        filter: `following_id=eq.${userProfile.id}`,
+      }, () => {
+        getFollowCounts(userProfile.id).then(setFollowCounts).catch(() => {});
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userProfile.id]);
 
   useEffect(() => {
     AsyncStorage.getItem(`profile_stats_${userProfile.id}`).then(raw => {

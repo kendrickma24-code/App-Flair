@@ -3,14 +3,6 @@ import { Flight, FlightStatus } from '../data/mockData';
 import { UserProfile } from '../App';
 import * as ImageManipulator from 'expo-image-manipulator';
 
-export interface Comment {
-  id: string;
-  authorName: string;
-  authorInitials: string;
-  text: string;
-  timeAgo: string;
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────
 
 function resolveStatus(dateStr: string, storedStatus: string): FlightStatus {
@@ -95,6 +87,23 @@ export interface SearchUser {
   avatarUrl: string | null;
   isPrivate: boolean;
   followStatus: 'none' | 'pending' | 'accepted';
+}
+
+export async function findContactsOnFlare(emails: string[], currentUserId: string): Promise<SearchUser[]> {
+  if (!emails.length) return [];
+  const { data, error } = await supabase.rpc('find_contacts_on_flare', {
+    p_emails: emails.slice(0, 500), // cap to avoid oversized requests
+    p_current_user_id: currentUserId,
+  });
+  if (error) throw error;
+  return (data ?? []).map((r: any) => ({
+    id: r.id,
+    username: r.username ?? '',
+    fullName: r.full_name ?? '',
+    avatarUrl: r.avatar_url ?? null,
+    isPrivate: r.is_private ?? false,
+    followStatus: r.follow_status ?? 'none',
+  }));
 }
 
 export async function searchUsers(query: string, currentUserId: string): Promise<SearchUser[]> {
@@ -183,27 +192,20 @@ export async function saveProfile(profile: UserProfile): Promise<void> {
 // ── Flights ───────────────────────────────────────────────────────────
 
 export async function loadFlights(userId: string, profile: UserProfile): Promise<Flight[]> {
-  const [{ data, error }, { data: likedRows }] = await Promise.all([
-    supabase
-      .from('flights')
-      .select('*')
-      .eq('user_id', userId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('flight_likes')
-      .select('flight_id')
-      .eq('user_id', userId),
-  ]);
+  const { data, error } = await supabase
+    .from('flights')
+    .select('*')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
   if (error) throw error;
-
-  const likedIds = new Set((likedRows ?? []).map((r: any) => r.flight_id));
 
   const user = {
     name: profile.name || profile.username || 'You',
     handle: `@${profile.username}`,
     avatarColors: ['#667eea', '#764ba2'] as [string, string],
     initials: (profile.name || profile.username || '?')[0]?.toUpperCase() ?? '?',
+    avatarUrl: profile.avatarUri ?? null,
   };
 
   return (data ?? []).map(r => {
@@ -224,9 +226,6 @@ export async function loadFlights(userId: string, profile: UserProfile): Promise
     journalPrivate: r.journal_private ?? true,
     airportMinutes: r.airport_minutes ?? undefined,
     photos,
-    likes:          r.likes ?? 0,
-    comments:       r.comments ?? 0,
-    liked:          likedIds.has(r.id),
     timeAgo: timeAgo(r.created_at),
   });});
 }
@@ -254,28 +253,23 @@ export async function loadFeedFlights(currentUserId: string): Promise<Flight[]> 
   const followingIds = (followData ?? []).map((r: any) => r.following_id as string);
   const feedUserIds = [currentUserId, ...followingIds];
 
-  // Step 2: fetch flights + likes (no FK join — fetch profiles separately)
-  const [{ data: flightData, error: flightError }, { data: likedData }] = await Promise.all([
-    supabase
-      .from('flights')
-      .select('*')
-      .in('user_id', feedUserIds)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(150),
-    supabase.from('flight_likes').select('flight_id').eq('user_id', currentUserId),
-  ]);
+  // Step 2: fetch flights
+  const { data: flightData, error: flightError } = await supabase
+    .from('flights')
+    .select('*')
+    .in('user_id', feedUserIds)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(150);
 
   if (flightError) throw flightError;
 
   // Step 3: fetch profiles for all unique user_ids
   const uniqueUserIds = [...new Set((flightData ?? []).map((r: any) => r.user_id as string))];
   const { data: profileData } = uniqueUserIds.length
-    ? await supabase.from('profiles').select('id, full_name, username').in('id', uniqueUserIds)
+    ? await supabase.from('profiles').select('id, full_name, username, avatar_url').in('id', uniqueUserIds)
     : { data: [] };
   const profileMap = new Map((profileData ?? []).map((p: any) => [p.id, p]));
-
-  const likedIds = new Set((likedData ?? []).map((r: any) => r.flight_id));
 
   // Track avatar color index per user so the same user always gets the same gradient
   const userColorIndex = new Map<string, number>();
@@ -283,7 +277,7 @@ export async function loadFeedFlights(currentUserId: string): Promise<Flight[]> 
 
   return (flightData ?? []).map(r => {
     const profile = profileMap.get(r.user_id) as any;
-    const name = profile?.full_name || profile?.username || 'Flare User';
+    const name = profile?.full_name || profile?.username || 'Flair User';
     const username = profile?.username || '';
 
     if (!userColorIndex.has(r.user_id)) {
@@ -305,6 +299,7 @@ export async function loadFeedFlights(currentUserId: string): Promise<Flight[]> 
         handle: username ? `@${username}` : '',
         avatarColors,
         initials: name[0]?.toUpperCase() ?? '?',
+        avatarUrl: profile?.avatar_url ?? null,
       },
       from: { code: r.from_code, city: r.from_city ?? '' },
       to:   { code: r.to_code,   city: r.to_city   ?? '' },
@@ -317,33 +312,9 @@ export async function loadFeedFlights(currentUserId: string): Promise<Flight[]> 
       journalPrivate: r.journal_private ?? true,
       airportMinutes: r.airport_minutes ?? undefined,
       photos,
-      likes:    r.likes    ?? 0,
-      comments: r.comments ?? 0,
-      liked:    likedIds.has(r.id),
       timeAgo:  timeAgo(r.created_at),
     };
   });
-}
-
-export async function toggleLike(
-  flightId: string, userId: string, nowLiked: boolean,
-  actorName?: string,
-): Promise<void> {
-  if (nowLiked) {
-    await supabase.from('flight_likes').insert({ flight_id: flightId, user_id: userId });
-    await supabase.rpc('increment_likes', { p_flight_id: flightId, p_delta: 1 });
-    // Push notification to flight owner
-    if (actorName) {
-      const { data: flight } = await supabase
-        .from('flights').select('user_id, from_code, to_code').eq('id', flightId).single();
-      if (flight && flight.user_id !== userId) {
-        sendPushToUser(flight.user_id, 'New like', `${actorName} liked your ${flight.from_code} → ${flight.to_code} flight`);
-      }
-    }
-  } else {
-    await supabase.from('flight_likes').delete().eq('flight_id', flightId).eq('user_id', userId);
-    await supabase.rpc('increment_likes', { p_flight_id: flightId, p_delta: -1 });
-  }
 }
 
 export async function saveFlight(flight: Flight, userId: string): Promise<Flight> {
@@ -467,69 +438,59 @@ export async function deleteFlight(flightId: string, userId: string): Promise<vo
   if (error) throw error;
 }
 
-// ── Comments ──────────────────────────────────────────────────────────
+// ── Reports ──────────────────────────────────────────────────────────
 
-export async function loadComments(flightId: string): Promise<Comment[]> {
-  const { data, error } = await supabase.rpc('load_comments', { p_flight_id: flightId });
-  if (error) throw error;
-  return (data ?? []).map((r: any) => ({
-    id: r.id,
-    authorName: r.author_name,
-    authorInitials: r.author_initials,
-    text: r.text,
-    timeAgo: timeAgo(r.created_at),
-  }));
+export async function reportContent(
+  contentType: 'flight',
+  contentId: string,
+): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  const { error } = await supabase.rpc('report_content', {
+    p_reporter_id: user.id,
+    p_content_type: contentType,
+    p_content_id: contentId,
+  });
+  if (error && !error.message.includes('already reported')) throw error;
 }
 
 export interface Notification {
   id: string;
-  type: 'comment' | 'like' | 'same_flight';
+  type: 'same_flight' | 'new_follower';
   authorName: string;
   authorInitials: string;
-  text: string | null;
-  fromCode: string;
-  toCode: string;
-  flightId: string;
+  authorAvatarUrl?: string | null;
+  authorUsername?: string;
+  // same_flight only
+  fromCode?: string;
+  toCode?: string;
+  flightId?: string;
   createdAt: string;
   timeAgo: string;
 }
 
 export async function loadNotifications(userId: string): Promise<Notification[]> {
-  const [commentsRes, sameFlightRes] = await Promise.all([
-    supabase
-      .from('comments')
-      .select('id, author_name, author_initials, text, created_at, flight_id, flights!inner(from_code, to_code, user_id)')
-      .eq('flights.user_id', userId)
-      .neq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(40),
+  const [flightNotifsRes, followsRes] = await Promise.all([
     supabase
       .from('flight_notifications')
       .select('*')
       .eq('recipient_id', userId)
       .order('created_at', { ascending: false })
-      .limit(40),
+      .limit(60),
+    supabase
+      .from('follows')
+      .select('id, follower_id, created_at, profiles!follows_follower_id_fkey(username, full_name, avatar_url)')
+      .eq('following_id', userId)
+      .eq('status', 'accepted')
+      .order('created_at', { ascending: false })
+      .limit(60),
   ]);
 
-  const commentNotifs: Notification[] = (commentsRes.data ?? []).map((r: any) => ({
-    id: r.id,
-    type: 'comment' as const,
-    authorName: r.author_name ?? 'Someone',
-    authorInitials: r.author_initials ?? '?',
-    text: r.text ?? null,
-    fromCode: r.flights?.from_code ?? '',
-    toCode: r.flights?.to_code ?? '',
-    flightId: r.flight_id,
-    createdAt: r.created_at,
-    timeAgo: timeAgo(r.created_at),
-  }));
-
-  const sameFlightNotifs: Notification[] = (sameFlightRes.data ?? []).map((r: any) => ({
+  const flightNotifs: Notification[] = (flightNotifsRes.data ?? []).map((r: any) => ({
     id: r.id,
     type: 'same_flight' as const,
     authorName: r.actor_name ?? 'Someone',
     authorInitials: r.actor_initials ?? '?',
-    text: null,
     fromCode: r.from_code ?? '',
     toCode: r.to_code ?? '',
     flightId: r.flight_id,
@@ -537,9 +498,24 @@ export async function loadNotifications(userId: string): Promise<Notification[]>
     timeAgo: timeAgo(r.created_at),
   }));
 
-  return [...commentNotifs, ...sameFlightNotifs]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 60);
+  const followNotifs: Notification[] = (followsRes.data ?? []).map((r: any) => {
+    const profile = r.profiles as any;
+    const name = profile?.full_name || profile?.username || 'Someone';
+    return {
+      id: `follow_${r.id}`,
+      type: 'new_follower' as const,
+      authorName: name,
+      authorInitials: name[0]?.toUpperCase() ?? '?',
+      authorAvatarUrl: profile?.avatar_url ?? null,
+      authorUsername: profile?.username ?? '',
+      createdAt: r.created_at,
+      timeAgo: timeAgo(r.created_at),
+    };
+  });
+
+  return [...flightNotifs, ...followNotifs].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
 }
 
 // ── Same Route Users ─────────────────────────────────────────────────
@@ -630,23 +606,6 @@ export async function getFlightCompanions(flightId: string, viewerId: string): P
   }));
 }
 
-export async function addComment(
-  flightId: string,
-  authorName: string,
-  authorInitials: string,
-  text: string,
-): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
-  const { error } = await supabase.rpc('add_comment', {
-    p_flight_id: flightId,
-    p_user_id: user?.id ?? '',
-    p_author_name: authorName,
-    p_author_initials: authorInitials,
-    p_text: text,
-  });
-  if (error) throw error;
-}
-
 export async function loadDeletedFlights(userId: string, profile: UserProfile): Promise<Flight[]> {
   const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -673,6 +632,7 @@ export async function loadDeletedFlights(userId: string, profile: UserProfile): 
     handle: `@${profile.username}`,
     avatarColors: ['#667eea', '#764ba2'] as [string, string],
     initials: (profile.name || profile.username || '?')[0]?.toUpperCase() ?? '?',
+    avatarUrl: profile.avatarUri ?? null,
   };
 
   return (data ?? []).map(r => ({
@@ -689,9 +649,6 @@ export async function loadDeletedFlights(userId: string, profile: UserProfile): 
     journal:        r.journal ?? undefined,
     journalPrivate: r.journal_private ?? true,
     photos:         r.photos ?? [],
-    likes:          r.likes ?? 0,
-    comments:       r.comments ?? 0,
-    liked: false,
     timeAgo: timeAgo(r.created_at),
     deletedAt: r.deleted_at as string,
   }));
