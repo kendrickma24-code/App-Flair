@@ -57,14 +57,12 @@ export default function NotificationsScreen({ theme, isDark, currentUserId, isPr
       .catch(() => {})
       .finally(() => setLoadingNotifs(false));
 
-    if (isPrivate) {
-      setLoadingRequests(true);
-      loadFollowRequests(currentUserId)
-        .then(setRequests)
-        .catch(() => {})
-        .finally(() => setLoadingRequests(false));
-    }
-  }, [currentUserId, isPrivate]);
+    setLoadingRequests(true);
+    loadFollowRequests(currentUserId)
+      .then(setRequests)
+      .catch(() => {})
+      .finally(() => setLoadingRequests(false));
+  }, [currentUserId]);
 
   async function handleAccept(req: FollowRequest) {
     setRequests(prev => prev.filter(r => r.id !== req.id));
@@ -156,8 +154,7 @@ export default function NotificationsScreen({ theme, isDark, currentUserId, isPr
         <Text style={[styles.title, { color: theme.text }]}>Activity</Text>
       </View>
 
-      {isPrivate && (
-        <View style={[styles.segmentRow, { borderBottomColor: theme.sep }]}>
+      <View style={[styles.segmentRow, { borderBottomColor: theme.sep }]}>
           {(['notifications', 'requests'] as Section[]).map(s => (
             <TouchableOpacity
               key={s}
@@ -169,8 +166,7 @@ export default function NotificationsScreen({ theme, isDark, currentUserId, isPr
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
-      )}
+      </View>
 
       {loading ? (
         <View style={styles.center}>

@@ -340,6 +340,7 @@ export async function saveFlight(flight: Flight, userId: string): Promise<Flight
     p_journal:         flight.journal ?? null,
     p_journal_private: flight.journalPrivate ?? true,
     p_photos:          photos,
+    p_privacy:         flight.privacy ?? 'public',
   });
   if (error) throw error;
 
