@@ -36,7 +36,11 @@ function timeAgo(iso: string): string {
   if (days === 0) return 'Today';
   if (days === 1) return 'Yesterday';
   if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const d = new Date(iso);
+  const mo = (d.getMonth() + 1).toString().padStart(2, '0');
+  const dy = d.getDate().toString().padStart(2, '0');
+  const yr = d.getFullYear().toString().slice(-2);
+  return `${mo}-${dy}-${yr}`;
 }
 
 const AVATAR_COLORS: [string, string][] = [
@@ -95,7 +99,7 @@ export default function UserProfileModal({ user, visible, theme, isDark, current
         toCode: r.to_code,
         date: r.date,
         flightNum: r.flight_num ?? '',
-        status: r.status,
+        status: r.f_status ?? r.status,
         photos: Array.isArray(r.photos) ? r.photos : [],
       })));
     } catch {}
@@ -252,7 +256,7 @@ export default function UserProfileModal({ user, visible, theme, isDark, current
                         <Text style={[styles.routeCode, { color: theme.text }]}>{f.toCode}</Text>
                       </View>
                       <Text style={[styles.flightMeta, { color: theme.textMuted }]}>
-                        {f.flightNum ? `${f.flightNum} · ` : ''}{f.date}
+                        {f.flightNum ? `${f.flightNum} · ` : ''}{(() => { const p = f.date.split('-'); return p.length === 3 ? `${p[1]}-${p[0]}-${p[2].slice(-2)}` : f.date; })()}
                       </Text>
                     </View>
                     <Text style={[styles.flightStatus, { color: statusColor(f.status) }]}>
