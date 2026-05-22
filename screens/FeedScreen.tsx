@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, SectionList, ScrollView,
-  TouchableOpacity, StatusBar,
+  TouchableOpacity, StatusBar, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,14 +20,16 @@ interface Props {
   currentUserId: string;
   currentUserName: string;
   currentUserInitials: string;
+  currentUserAvatarUri?: string | null;
   onEditFlight: (id: string, updates: import('../components/EditFlightModal').FlightEditUpdates) => void;
   onDeleteFlight: (id: string) => void;
-  onLikeChange?: (flightId: string, liked: boolean) => void;
+  onRefresh: () => Promise<void>;
 }
 
-export default function FeedScreen({ theme, isDark, flights, currentUserId, currentUserName, currentUserInitials, onEditFlight, onDeleteFlight, onLikeChange }: Props) {
+export default function FeedScreen({ theme, isDark, flights, currentUserId, currentUserName, currentUserInitials, currentUserAvatarUri, onEditFlight, onDeleteFlight, onRefresh }: Props) {
   const [filter, setFilter] = useState<Filter>('all');
   const [showSearch, setShowSearch] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const chips: { key: Filter; label: string }[] = [
     { key: 'all', label: 'All' },
@@ -35,6 +37,12 @@ export default function FeedScreen({ theme, isDark, flights, currentUserId, curr
     { key: 'live', label: 'Live' },
     { key: 'past', label: 'Past' },
   ];
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try { await onRefresh(); } catch {}
+    setRefreshing(false);
+  }
 
   // Build sections
   const sections = (() => {
@@ -57,7 +65,7 @@ export default function FeedScreen({ theme, isDark, flights, currentUserId, curr
 
       <View style={styles.header}>
         <View style={styles.wordmarkRow}>
-          <LogoMark size={28} variant="gradient" />
+          <LogoMark size={28} variant="white" color={theme.text} />
           <Text style={[styles.wordmark, { color: theme.text }]}>
             Flair
           </Text>
@@ -98,6 +106,15 @@ export default function FeedScreen({ theme, isDark, flights, currentUserId, curr
         keyExtractor={f => f.id}
         contentContainerStyle={styles.feedContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={theme.accent}
+          />
+        }
         renderItem={({ item }) => (
           <FlightCard
             flight={item}
@@ -107,9 +124,9 @@ export default function FeedScreen({ theme, isDark, flights, currentUserId, curr
             currentUserId={currentUserId}
             currentUserName={currentUserName}
             currentUserInitials={currentUserInitials}
+            currentUserAvatarUri={currentUserAvatarUri}
             onDelete={() => onDeleteFlight(item.id)}
             onEdit={updates => onEditFlight(item.id, updates)}
-            onLikeChange={onLikeChange}
           />
         )}
         renderSectionHeader={({ section }) =>

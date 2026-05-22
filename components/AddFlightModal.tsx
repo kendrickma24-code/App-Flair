@@ -21,6 +21,8 @@ interface Props {
   theme: Theme;
   existingFlights?: Flight[];
   returnFor?: Flight; // pre-configure modal as a return for this flight
+  skipTripPrompts?: boolean; // skip relationship prompts when adding to an existing trip
+  currentUser?: { name: string; handle: string; initials: string; avatarUrl?: string | null };
 }
 
 
@@ -50,6 +52,12 @@ function strToDate(s: string): Date {
   if (p.length !== 3 || p[2].length !== 4) return new Date();
   const d = new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
   return isNaN(d.getTime()) ? new Date() : d;
+}
+
+function fmtAlertDate(s: string): string {
+  const p = s.split('-');
+  if (p.length !== 3) return s;
+  return `${p[1]}-${p[0]}-${p[2].slice(-2)}`;
 }
 
 const MONTH_MAP: Record<string, string> = {
@@ -157,7 +165,7 @@ function parseFlightText(text: string): { flightNum: string | null; date: string
 }
 
 // ── Flight lookup error card ──────────────────────────────────────────────
-function FlightLookupError({ code, num }: { code: string; num: string }) {
+function FlightLookupError({ code, num, theme }: { code: string; num: string; theme: Theme }) {
   // Detect if the number might have zero/O confusion in the airline prefix
   const prefix = num.replace(/\s/g, '').toUpperCase().slice(0, 2);
   const hasZeroOConfusion = /[0O]/.test(prefix);
@@ -177,6 +185,11 @@ function FlightLookupError({ code, num }: { code: string; num: string }) {
           title: "Invalid flight number",
           body: "Flight numbers are usually a 2-letter airline code followed by digits — like AA123 or DL456.",
         };
+      case 'DATE_TOO_OLD':
+        return {
+          title: "Date out of range",
+          body: "The flight database only covers flights from the past 12 months. For older flights, enter the details manually below.",
+        };
       case 'NO_KEY':
         return {
           title: "API key not configured",
@@ -191,18 +204,18 @@ function FlightLookupError({ code, num }: { code: string; num: string }) {
   })();
 
   return (
-    <View style={errStyles.wrap}>
+    <View style={[errStyles.wrap, { backgroundColor: theme.liveBg, borderColor: theme.live }]}>
       <View style={errStyles.header}>
-        <Ionicons name="search-outline" size={15} color="#FF453A" />
-        <Text style={errStyles.title}>{title}</Text>
+        <Ionicons name="search-outline" size={15} color={theme.live} />
+        <Text style={[errStyles.title, { color: theme.live }]}>{title}</Text>
       </View>
-      <Text style={errStyles.body}>{body}</Text>
+      <Text style={[errStyles.body, { color: theme.textSub }]}>{body}</Text>
 
       {showAltSuggestion && (
-        <View style={errStyles.hint}>
-          <Ionicons name="bulb-outline" size={13} color="#FF9F0A" />
-          <Text style={errStyles.hintText}>
-            Try <Text style={errStyles.hintCode}>{altNum}</Text> — the digit 0 and letter O are easy to mix up in flight numbers.
+        <View style={[errStyles.hint, { borderTopColor: theme.sep }]}>
+          <Ionicons name="bulb-outline" size={13} color={theme.warning} />
+          <Text style={[errStyles.hintText, { color: theme.textMuted }]}>
+            Try <Text style={{ fontWeight: '700', color: theme.warning }}>{altNum}</Text> — the digit 0 and letter O are easy to mix up in flight numbers.
           </Text>
         </View>
       )}
@@ -220,16 +233,19 @@ function FlightLookupError({ code, num }: { code: string; num: string }) {
 }
 
 const errStyles = StyleSheet.create({
-  wrap:  { borderRadius: 12, backgroundColor: 'rgba(255,69,58,0.08)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,69,58,0.3)', padding: 14, marginBottom: 16, gap: 8 },
+  wrap:  { borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 14, marginBottom: 16, gap: 8 },
   header:{ flexDirection: 'row', alignItems: 'center', gap: 7 },
-  title: { fontSize: 14, fontWeight: '700', color: '#FF453A' },
-  body:  { fontSize: 13, fontWeight: '400', color: 'rgba(255,255,255,0.70)', lineHeight: 19 },
-  hint:  { flexDirection: 'row', alignItems: 'flex-start', gap: 7, paddingTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.08)', marginTop: 4 },
-  hintText: { flex: 1, fontSize: 12, fontWeight: '400', color: 'rgba(255,255,255,0.55)', lineHeight: 17 },
-  hintCode: { fontWeight: '700', color: '#FF9F0A' },
+  title: { fontSize: 14, fontWeight: '700' },
+  body:  { fontSize: 13, fontWeight: '400', lineHeight: 19 },
+  hint:  { flexDirection: 'row', alignItems: 'flex-start', gap: 7, paddingTop: 4, borderTopWidth: StyleSheet.hairlineWidth, marginTop: 4 },
+  hintText: { flex: 1, fontSize: 12, fontWeight: '400', lineHeight: 17 },
 });
 
-export default function AddFlightModal({ visible, onClose, onAdd, theme, existingFlights = [], returnFor }: Props) {
+export default function AddFlightModal({ visible, onClose, onAdd, theme, existingFlights = [], returnFor, skipTripPrompts = false, currentUser }: Props) {
+  const resolvedUser = currentUser
+    ? { name: currentUser.name, handle: currentUser.handle, avatarColors: ['#667eea', '#764ba2'] as [string, string], initials: currentUser.initials, avatarUrl: currentUser.avatarUrl ?? null }
+    : MY_USER;
+
   const [step, setStep] = useState<'entry' | 'details'>('entry');
   const [scanLoading, setScanLoading] = useState(false);
 
@@ -390,6 +406,12 @@ export default function AddFlightModal({ visible, onClose, onAdd, theme, existin
     const from = newFrom.toUpperCase();
     const to = newTo.toUpperCase();
     const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
+
+    // If any existing flight arrives AT the new departure airport, this new flight
+    // is a continuation leg of a multi-city trip — not a conflict.
+    const isConnectingLeg = existingFlights.some(f => f.to.code.toUpperCase() === from);
+    if (isConnectingLeg) return null;
+
     return existingFlights.find(f => {
       if (f.to.code.toUpperCase() !== to) return false;    // must share destination
       if (f.from.code.toUpperCase() === from) return false; // same route — no conflict
@@ -404,6 +426,7 @@ export default function AddFlightModal({ visible, onClose, onAdd, theme, existin
 
   function promptFlightRelationship(departureCode: string, destinationCode: string) {
     if (returnPromptShown.current) return;
+    if (skipTripPrompts) return;
     if (!departureCode || !destinationCode) return;
 
     // Case 1: possible round-trip — determine direction based on date
@@ -419,9 +442,9 @@ export default function AddFlightModal({ visible, onClose, onAdd, theme, existin
           // New flight is chronologically first — existing may actually be the return
           Alert.alert(
             'Departing Flight?',
-            `Your ${roundTripMatch.from.code} → ${roundTripMatch.to.code} on ${roundTripMatch.date} may actually be the return leg.\n\nIs this (${departureCode} → ${destinationCode}) the true departure?`,
+            `Your ${roundTripMatch.from.code} → ${roundTripMatch.to.code} on ${fmtAlertDate(roundTripMatch.date)} may actually be the return leg.\n\nIs this (${departureCode} → ${destinationCode}) the true departure?`,
             [
-              { text: 'Not related', style: 'cancel' },
+              { text: 'Go Back', style: 'cancel' },
               {
                 text: "Yes, it's the departure",
                 onPress: () => {
@@ -435,9 +458,9 @@ export default function AddFlightModal({ visible, onClose, onAdd, theme, existin
           // New flight is later — it's the return leg
           Alert.alert(
             'Return Trip?',
-            `This looks like the return leg of your ${roundTripMatch.from.code} → ${roundTripMatch.to.code} flight on ${roundTripMatch.date}.\n\nLog it as the return?`,
+            `This looks like the return leg of your ${roundTripMatch.from.code} → ${roundTripMatch.to.code} flight on ${fmtAlertDate(roundTripMatch.date)}.\n\nLog it as the return?`,
             [
-              { text: 'Not a return', style: 'cancel' },
+              { text: 'Go Back', style: 'cancel' },
               {
                 text: "Yes, it's the return",
                 onPress: () => {
@@ -458,9 +481,9 @@ export default function AddFlightModal({ visible, onClose, onAdd, theme, existin
       returnPromptShown.current = true;
       Alert.alert(
         'Departure Flight?',
-        `You already have a ${priorReturn.from.code} → ${priorReturn.to.code} flight logged on ${priorReturn.date}. Is this the outbound flight for that trip?`,
+        `You already have a ${priorReturn.from.code} → ${priorReturn.to.code} flight logged on ${fmtAlertDate(priorReturn.date)}. Is this the outbound flight for that trip?`,
         [
-          { text: 'No', style: 'cancel' },
+          { text: 'Go Back', style: 'cancel' },
           {
             text: "Yes, it's the outbound",
             onPress: () => {
@@ -480,9 +503,9 @@ export default function AddFlightModal({ visible, onClose, onAdd, theme, existin
       returnPromptShown.current = true;
       Alert.alert(
         'Different Starting Point',
-        `You have a ${sameDestFlight.from.code} → ${sameDestFlight.to.code} on ${sameDestFlight.date}. Is this a separate trip, or an earlier departure leg of the same trip?`,
+        `You have a ${sameDestFlight.from.code} → ${sameDestFlight.to.code} on ${fmtAlertDate(sameDestFlight.date)}. Is this a separate trip, or an earlier departure leg of the same trip?`,
         [
-          { text: 'Separate trip', style: 'cancel' },
+          { text: 'Go Back', style: 'cancel' },
           {
             text: 'Earlier departure leg',
             onPress: () => {
@@ -523,6 +546,8 @@ export default function AddFlightModal({ visible, onClose, onAdd, theme, existin
         setFlightError('NO_KEY');
       } else if (e.message === 'NOT_FOUND') {
         setFlightError('NOT_FOUND');
+      } else if (e.message === 'DATE_TOO_OLD') {
+        setFlightError('DATE_TOO_OLD');
       } else if (e.message?.startsWith('API_ERROR_4')) {
         setFlightError('INVALID');
       } else {
@@ -695,7 +720,7 @@ export default function AddFlightModal({ visible, onClose, onAdd, theme, existin
       newFlight = {
         id,
         userId: '',
-        user: MY_USER,
+        user: resolvedUser,
         from: { code: flightResult.departure.iata, city: flightResult.departure.airport },
         to: { code: flightResult.arrival.iata, city: flightResult.arrival.airport },
         flightNum: flightResult.flightNumber,
@@ -715,7 +740,7 @@ export default function AddFlightModal({ visible, onClose, onAdd, theme, existin
       newFlight = {
         id,
         userId: '',
-        user: MY_USER,
+        user: resolvedUser,
         from: { code: fromCode.trim().toUpperCase(), city: '' },
         to: { code: toCode.trim().toUpperCase(), city: '' },
         flightNum: lookupNum,
@@ -745,7 +770,7 @@ export default function AddFlightModal({ visible, onClose, onAdd, theme, existin
             return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
           }),
           userId: '',
-          user: MY_USER,
+          user: resolvedUser,
           from: { code: returnFrom, city: returnFlightResult?.departure.airport ?? '' },
           to:   { code: returnToCode2, city: returnFlightResult?.arrival.airport ?? '' },
           flightNum: returnFlightResult?.flightNumber || returnFlightNum || '',
@@ -804,7 +829,7 @@ const PRIVACY_OPTIONS: { key: 'public' | 'followers' | 'private'; label: string;
             <Text style={[styles.sheetTitle, { color: s.text }]}>
               {step === 'entry' ? 'Log a Flight' : 'Post Details'}
             </Text>
-            <View style={styles.backBtn}>
+            <View style={[styles.backBtn, { justifyContent: 'flex-end' }]}>
               <TouchableOpacity style={[styles.closeBtn, { backgroundColor: s.surface }]} onPress={() => { reset(); onClose(); }}>
                 <Ionicons name="close" size={16} color={s.textSub} />
               </TouchableOpacity>
@@ -867,7 +892,24 @@ const PRIVACY_OPTIONS: { key: 'public' | 'followers' | 'private'; label: string;
                   autoCapitalize="characters"
                 />
 
-                <Text style={[styles.label, { color: s.textMuted }]}>DATE</Text>
+                <View style={styles.dateLabelRow}>
+                  <Text style={[styles.label, { color: s.textMuted, marginBottom: 0 }]}>DATE</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const today = new Date();
+                      setLookupDateObj(today);
+                      const str = dateToStr(today);
+                      setLookupDate(str);
+                      setFlightResult(null);
+                      setFlightError(null);
+                      setFlightType(isDatePast(str) ? 'past' : 'upcoming');
+                      setShowDatePicker(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.todayBtn, { color: s.accent }]}>Today</Text>
+                  </TouchableOpacity>
+                </View>
                 <TouchableOpacity
                   style={[styles.input, styles.dateBtn, { backgroundColor: s.inputBg }]}
                   onPress={() => {
@@ -877,7 +919,7 @@ const PRIVACY_OPTIONS: { key: 'public' | 'followers' | 'private'; label: string;
                   activeOpacity={0.7}
                 >
                   <Ionicons name="calendar-outline" size={18} color={s.accent} />
-                  <Text style={[styles.dateBtnText, { color: s.text }]}>{lookupDate}</Text>
+                  <Text style={[styles.dateBtnText, { color: s.text }]}>{(() => { const p = lookupDate.split('-'); return p.length === 3 ? `${p[1]}-${p[0]}-${p[2].slice(-2)}` : lookupDate; })()}</Text>
                   <Ionicons name={showDatePicker ? 'chevron-up' : 'chevron-down'} size={15} color={s.textMuted} />
                 </TouchableOpacity>
                 {showDatePicker && (
@@ -888,13 +930,19 @@ const PRIVACY_OPTIONS: { key: 'public' | 'followers' | 'private'; label: string;
                     accentColor={s.accent}
                     onChange={(_, date) => {
                       if (date) {
+                        const navigatedMonth = date.getMonth() !== lookupDateObj.getMonth()
+                          || date.getFullYear() !== lookupDateObj.getFullYear();
                         setLookupDateObj(date);
                         const str = dateToStr(date);
                         setLookupDate(str);
                         setFlightResult(null);
                         setFlightError(null);
                         setFlightType(isDatePast(str) ? 'past' : 'upcoming');
-                        setShowDatePicker(false);
+                        // Only dismiss when the user picks a specific day,
+                        // not when they navigate to a different month/year.
+                        if (!navigatedMonth) {
+                          setShowDatePicker(false);
+                        }
                       }
                     }}
                   />
@@ -960,7 +1008,7 @@ const PRIVACY_OPTIONS: { key: 'public' | 'followers' | 'private'; label: string;
                 {/* Error + manual route fallback */}
                 {flightError !== null && (
                   <>
-                    <FlightLookupError code={flightError} num={lookupNum.trim()} />
+                    <FlightLookupError code={flightError} num={lookupNum.trim()} theme={theme} />
                     <Text style={[styles.label, { color: s.textMuted }]}>ENTER ROUTE MANUALLY</Text>
                     <View style={styles.routeRow}>
                       <TextInput
@@ -1224,7 +1272,7 @@ const styles = StyleSheet.create({
   airportInput: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '700', letterSpacing: 1 },
 
   errorCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderWidth: 1.5, borderRadius: 12, padding: 12, marginBottom: 14 },
-  errorText: { flex: 1, fontSize: 13, fontWeight: '500', color: '#FF3B30', lineHeight: 18 },
+  errorText: { flex: 1, fontSize: 13, fontWeight: '500', lineHeight: 18 },
 
   // Flight preview card (step 2)
   flightPreview: { borderRadius: 18, padding: 20 },
@@ -1260,6 +1308,8 @@ const styles = StyleSheet.create({
   // Date picker
   dateBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14 },
   dateBtnText: { flex: 1, fontSize: 15, fontWeight: '600' },
+  dateLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  todayBtn: { fontSize: 13, fontWeight: '600' },
 
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
   timeChip: {

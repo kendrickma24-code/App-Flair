@@ -49,6 +49,7 @@ export default function App() {
   const [postResetReturn, setPostResetReturn] = useState(false);
   const [showAddFlight, setShowAddFlight] = useState(false);
   const [returnForFlight, setReturnForFlight] = useState<Flight | null>(null);
+  const [addFlightFromTrip, setAddFlightFromTrip] = useState(false);
   const [notifBadge, setNotifBadge] = useState(false);
 
   // ── Restore session on launch ──────────────────────────────────────
@@ -211,6 +212,13 @@ export default function App() {
     setOnboarded(true);
   }
 
+  // ── Refresh feed ──────────────────────────────────────────────────
+  async function handleRefreshFeed() {
+    if (!userProfile.id) return;
+    const feed = await loadFeedFlights(userProfile.id);
+    setFeedFlights(feed);
+  }
+
   // ── Called after onboarding completes ─────────────────────────────
   async function handleOnboardingComplete(profile: UserProfile) {
     setUserProfile(profile);
@@ -311,12 +319,6 @@ export default function App() {
     try { await deleteFlight(flightId, userProfile.id); } catch {}
   }
 
-  // ── Like change — sync liked state + count across flights + feedFlights ───
-  function handleLikeChange(flightId: string, liked: boolean) {
-    const delta = liked ? 1 : -1;
-    setFlights(prev => prev.map(f => f.id === flightId ? { ...f, liked, likes: Math.max(0, f.likes + delta) } : f));
-    setFeedFlights(prev => prev.map(f => f.id === flightId ? { ...f, liked, likes: Math.max(0, f.likes + delta) } : f));
-  }
 
   // ── Sign out ───────────────────────────────────────────────────────
   async function handleSignOut() {
@@ -389,7 +391,7 @@ export default function App() {
         >
           <Tab.Screen
             name="Feed"
-            options={{ tabBarIcon: ({ color }) => <Ionicons name="home-outline" size={24} color={color} /> }}
+            options={{ tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? 'home' : 'home-outline'} size={24} color={color} /> }}
           >
             {({ navigation }) => (
               <FeedScreen
@@ -399,16 +401,17 @@ export default function App() {
                 currentUserId={userProfile.id}
                 currentUserName={userProfile.name || userProfile.username || 'You'}
                 currentUserInitials={(userProfile.name || userProfile.username || '?')[0]?.toUpperCase() ?? '?'}
+                currentUserAvatarUri={userProfile.avatarUri}
                 onEditFlight={handleEditFlight}
                 onDeleteFlight={handleDeleteFlight}
-                onLikeChange={handleLikeChange}
+                onRefresh={handleRefreshFeed}
               />
             )}
           </Tab.Screen>
 
           <Tab.Screen
             name="Discover"
-            options={{ tabBarLabel: 'Insights', tabBarIcon: ({ color }) => <Ionicons name="pulse-outline" size={24} color={color} /> }}
+            options={{ tabBarLabel: 'Insights', tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? 'pulse' : 'pulse-outline'} size={24} color={color} /> }}
           >
             {() => (
               <DiscoverScreen
@@ -423,12 +426,8 @@ export default function App() {
             name="Add"
             options={{
               tabBarLabel: 'Add',
-              tabBarIcon: ({ color }) => (
-                <Image
-                  source={require('./assets/mark-white-56.png')}
-                  style={{ width: 24, height: 24, tintColor: color }}
-                  resizeMode="contain"
-                />
+              tabBarIcon: ({ color, focused }) => (
+                <Ionicons name={focused ? 'airplane' : 'airplane-outline'} size={24} color={color} />
               ),
             }}
             listeners={{
@@ -445,9 +444,9 @@ export default function App() {
             name="Activity"
             options={{
               tabBarLabel: 'Activity',
-              tabBarIcon: ({ color }) => (
+              tabBarIcon: ({ color, focused }) => (
                 <View>
-                  <Ionicons name="notifications-outline" size={24} color={color} />
+                  <Ionicons name={focused ? 'notifications' : 'notifications-outline'} size={24} color={color} />
                   {notifBadge && <View style={tabStyles.badge} />}
                 </View>
               ),
@@ -466,7 +465,7 @@ export default function App() {
 
           <Tab.Screen
             name="Profile"
-            options={{ tabBarIcon: ({ color }) => <Ionicons name="person-outline" size={24} color={color} /> }}
+            options={{ tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? 'person' : 'person-outline'} size={24} color={color} /> }}
           >
             {() => (
               <ProfileNavigator
@@ -482,12 +481,11 @@ export default function App() {
                 onRestoreFlight={handleRestoreFlight}
                 onPermanentDelete={handlePermanentDelete}
                 onSignOut={handleSignOut}
-                onLikeChange={handleLikeChange}
                 onAddReturnFlight={flight => {
                   setReturnForFlight(flight);
                   setShowAddFlight(true);
                 }}
-                onAddFlight={() => setShowAddFlight(true)}
+                onAddFlight={() => { setAddFlightFromTrip(true); setShowAddFlight(true); }}
               />
             )}
           </Tab.Screen>
@@ -496,11 +494,18 @@ export default function App() {
 
       <AddFlightModal
         visible={showAddFlight}
-        onClose={() => { setShowAddFlight(false); setReturnForFlight(null); }}
-        onAdd={async (flight, tripName) => { setShowAddFlight(false); setReturnForFlight(null); await handleAddFlight(flight, tripName); }}
+        onClose={() => { setShowAddFlight(false); setReturnForFlight(null); setAddFlightFromTrip(false); }}
+        onAdd={async (flight, tripName) => { setShowAddFlight(false); setReturnForFlight(null); setAddFlightFromTrip(false); await handleAddFlight(flight, tripName); }}
         theme={theme}
         existingFlights={flights}
         returnFor={returnForFlight ?? undefined}
+        skipTripPrompts={addFlightFromTrip}
+        currentUser={{
+          name: userProfile.name || userProfile.username || 'You',
+          handle: `@${userProfile.username}`,
+          initials: (userProfile.name || userProfile.username || '?')[0]?.toUpperCase() ?? '?',
+          avatarUrl: userProfile.avatarUri ?? null,
+        }}
       />
 
     </>

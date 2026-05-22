@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  StatusBar, Image, Modal, Alert, Animated, Easing, PanResponder, Dimensions,
+  StatusBar, Image, Modal, Alert, Animated, Easing, PanResponder, Dimensions, useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from './ProfileNavigator';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,6 +22,7 @@ import TripViewerModal from '../components/TripViewerModal';
 import { syncTripsForUser, inferHomeAirport } from '../services/tripGrouping';
 import { getVisitedCountryIds, getVisitedStateCodes, getAirportInfo } from '../data/airports';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import InsightDetailModal, { InsightKey } from '../components/InsightDetailModal';
 
 // ── Achievement stat definitions ───────────────────────────────────────────
 type StatKey = 'countries' | 'miles' | 'flights' | 'trips' | 'states';
@@ -37,7 +38,8 @@ const DEFAULT_STATS: StatKey[] = ['countries', 'miles', 'flights'];
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const GLOBE_VERTICAL_OFFSET = 140;
-const GLOBE_RADIUS = Math.min(SCREEN_W, SCREEN_H) * 0.52;
+const GLOBE_SCALE = 0.42;
+const GLOBE_RADIUS = Math.min(SCREEN_W, SCREEN_H) * GLOBE_SCALE;
 // Position the sheet top just below the globe's bottom edge
 const PEEK_VISIBLE = Math.round(SCREEN_H / 2 + GLOBE_VERTICAL_OFFSET - GLOBE_RADIUS) + 20;
 // Collapsed: only the drag handle + stats row visible
@@ -99,7 +101,6 @@ interface Props {
   onRestoreFlight: (id: string) => void;
   onPermanentDelete: (id: string) => void;
   onSignOut: () => void;
-  onLikeChange?: (flightId: string, liked: boolean) => void;
   onAddReturnFlight?: (flight: Flight) => void;
   onAddFlight?: () => void;
 }
@@ -108,9 +109,11 @@ type Tab = 'trips' | 'logbook';
 
 export default function ProfileScreen({
   theme, isDark, userProfile, flights, deletedFlights,
-  onUpdateProfile, onDeleteFlight, onChangeFlightPrivacy, onEditFlight, onRestoreFlight, onPermanentDelete, onSignOut, onLikeChange, onAddReturnFlight, onAddFlight,
+  onUpdateProfile, onDeleteFlight, onChangeFlightPrivacy, onEditFlight, onRestoreFlight, onPermanentDelete, onSignOut, onAddReturnFlight, onAddFlight,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { width: winW, height: winH } = useWindowDimensions();
+  const isLandscape = winW > winH;
   const [tab, setTab] = useState<Tab>('trips');
   const [showSettings, setShowSettings] = useState(false);
   const [followCounts, setFollowCounts] = useState({ followers: 0, following: 0 });
@@ -118,6 +121,7 @@ export default function ProfileScreen({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedStats, setSelectedStats] = useState<StatKey[]>(DEFAULT_STATS);
   const [showStatPicker, setShowStatPicker] = useState(false);
+  const [insightKey, setInsightKey] = useState<InsightKey | null>(null);
   const [tripViewerIndex, setTripViewerIndex] = useState<number | null>(null);
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
 
@@ -135,11 +139,13 @@ export default function ProfileScreen({
   const scrollRef = useRef<ScrollView>(null);
   const scrollYRef = useRef(0);
 
-  useEffect(() => {
-    if (userProfile.id) {
-      getFollowCounts(userProfile.id).then(setFollowCounts).catch(() => {});
-    }
-  }, [userProfile.id]);
+  useFocusEffect(
+    useCallback(() => {
+      if (userProfile.id) {
+        getFollowCounts(userProfile.id).then(setFollowCounts).catch(() => {});
+      }
+    }, [userProfile.id])
+  );
 
   useEffect(() => {
     AsyncStorage.getItem(`profile_stats_${userProfile.id}`).then(raw => {
@@ -312,6 +318,21 @@ export default function ProfileScreen({
       {/* Twinkling stars */}
       <StarField />
 
+      {/* Globe — behind profile row */}
+      <View style={StyleSheet.absoluteFill}>
+        <GlobeView
+          theme={theme}
+          isDark={isDark}
+          visitedCountryIds={visitedCountryIds}
+          visitedStateCodes={visitedStateCodes}
+          routes={flightRoutes}
+          verticalOffset={isLandscape ? 0 : 120}
+          scale={GLOBE_SCALE}
+          onRegionTap={handleGlobeRegionTap}
+          onRouteTap={openRouteSheet}
+        />
+      </View>
+
       {/* Profile row — left-justified at top */}
       <View style={[styles.profileOverlay, { top: insets.top + 10 }]}>
         {userProfile.avatarUri ? (
@@ -349,23 +370,8 @@ export default function ProfileScreen({
       {/* Settings button — floating top-right */}
       <View style={[styles.floatingTopRight, { top: insets.top + 10 }]}>
         <TouchableOpacity style={styles.floatingBtn} onPress={() => setShowSettings(true)}>
-          <BlurView intensity={45} tint="dark" style={StyleSheet.absoluteFill} />
-          <Ionicons name="settings-outline" size={18} color="#fff" />
+          <Ionicons name="settings-outline" size={22} color="#fff" />
         </TouchableOpacity>
-      </View>
-
-      {/* Globe — positioned below the profile row */}
-      <View style={[StyleSheet.absoluteFill, { top: insets.top + 68 }]}>
-        <GlobeView
-          theme={theme}
-          isDark={isDark}
-          visitedCountryIds={visitedCountryIds}
-          visitedStateCodes={visitedStateCodes}
-          routes={flightRoutes}
-          verticalOffset={120}
-          onRegionTap={handleGlobeRegionTap}
-          onRouteTap={openRouteSheet}
-        />
       </View>
 
       {/* ── Bottom sheet ── */}
@@ -379,6 +385,7 @@ export default function ProfileScreen({
           },
         ]}
       >
+        <View style={styles.sheetInner}>
         {/* Glass layers */}
         <BlurView intensity={55} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={styles.sheetGlassOverlay} />
@@ -389,23 +396,26 @@ export default function ProfileScreen({
         </View>
 
         {/* Stats row — fixed above tabs */}
-        <TouchableOpacity
-          style={styles.statsRowWrap}
-          onPress={() => setShowStatPicker(true)}
-          activeOpacity={0.75}
-        >
+        <View style={styles.statsRowWrap}>
           <View style={[styles.statsRow, { borderColor: 'rgba(255,255,255,0.10)' }]}>
             {selectedStats.filter(key => !!STAT_META[key]).map((key, i) => (
               <React.Fragment key={key}>
                 {i > 0 && <View style={[styles.statDivider, { backgroundColor: 'rgba(255,255,255,0.12)' }]} />}
-                <View style={styles.statItem}>
+                <TouchableOpacity
+                  style={styles.statItem}
+                  onPress={() => setInsightKey(key as InsightKey)}
+                  onLongPress={() => setShowStatPicker(true)}
+                  delayLongPress={400}
+                  activeOpacity={0.7}
+                >
                   <Text style={[styles.statNum, { color: '#fff' }]}>{getStatValue(key)}</Text>
                   <Text style={[styles.statLabel, { color: 'rgba(255,255,255,0.55)' }]}>{STAT_META[key].label}</Text>
-                </View>
+                </TouchableOpacity>
               </React.Fragment>
             ))}
           </View>
-        </TouchableOpacity>
+          <Text style={styles.statsHint}>Hold to customize</Text>
+        </View>
 
         {/* Tab bar — fixed, center-justified */}
         <View style={[styles.tabs, { borderBottomColor: 'rgba(255,255,255,0.10)' }]}>
@@ -419,8 +429,10 @@ export default function ProfileScreen({
               onPress={() => setTab(t)}
             >
               <Ionicons
-                name={t === 'trips' ? 'map-outline' : 'book-outline'}
-                size={15}
+                name={t === 'trips'
+                  ? (tab === t ? 'map' : 'map-outline')
+                  : (tab === t ? 'list' : 'list-outline')}
+                size={17}
                 color={tab === t ? theme.accent : 'rgba(255,255,255,0.45)'}
               />
               <Text style={[styles.tabText, { color: tab === t ? theme.accent : 'rgba(255,255,255,0.45)' }]}>
@@ -527,6 +539,7 @@ export default function ProfileScreen({
             </View>
           )}
         </ScrollView>
+        </View>{/* end sheetInner */}
       </Animated.View>
 
       {/* Route detail sheet — shown when a route arc on the globe is tapped */}
@@ -578,13 +591,23 @@ export default function ProfileScreen({
         theme={theme}
         isDark={isDark}
         currentUserId={userProfile.id}
-        onLikeChange={onLikeChange}
         onEditFlight={onEditFlight}
         onDeleteFlight={onDeleteFlight}
         onAddFlight={onAddFlight}
         onDeleteTrip={_id => trips.find(t => t.id === _id)?.legs.forEach(l => onDeleteFlight(l.id))}
         onChangePrivacy={(_id, privacy) => trips.find(t => t.id === _id)?.legs.forEach(l => onChangeFlightPrivacy(l.id, privacy))}
         onClose={() => setTripViewerIndex(null)}
+      />
+
+      {/* Insight detail modal */}
+      <InsightDetailModal
+        visible={insightKey !== null}
+        statKey={insightKey}
+        flights={flights}
+        trips={trips}
+        theme={theme}
+        isDark={isDark}
+        onClose={() => setInsightKey(null)}
       />
 
       {/* Stat picker modal */}
@@ -677,10 +700,7 @@ const styles = StyleSheet.create({
   // Floating settings button
   floatingTopRight: { position: 'absolute', right: 16, zIndex: 10 },
   floatingBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
-    overflow: 'hidden',
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center', justifyContent: 'center', padding: 4,
   },
 
   // Stats row (inside sheet)
@@ -693,6 +713,7 @@ const styles = StyleSheet.create({
   statNum: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
   statLabel: { fontSize: 11, fontWeight: '500', marginTop: 2 },
   statDivider: { width: 0.5, height: 28 },
+  statsHint: { textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.22)', marginTop: 6, letterSpacing: 0.2 },
 
   // Stat picker modal
   pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
@@ -723,9 +744,15 @@ const styles = StyleSheet.create({
   // Bottom sheet — glass
   sheet: {
     position: 'absolute', left: 0, right: 0,
-    borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    // overflow and borderRadius moved to sheetInner so native-driver translateY
+    // doesn't break touch hit-testing (overflow:hidden on Animated.View + useNativeDriver
+    // causes touch area to not follow the visual transform position)
     shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 32, shadowOffset: { width: 0, height: -4 },
     elevation: 20,
+  },
+  sheetInner: {
+    flex: 1,
+    borderTopLeftRadius: 28, borderTopRightRadius: 28,
     overflow: 'hidden',
   },
   sheetGlassOverlay: {
