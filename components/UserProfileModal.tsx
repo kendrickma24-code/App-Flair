@@ -109,11 +109,28 @@ export default function UserProfileModal({ user, visible, theme, isDark, current
 
   useEffect(() => {
     if (visible && user) {
-      setFollowStatus(user.followStatus);
       setTab('trips');
       loadProfile();
-      loadFlights(user.followStatus);
       getFollowCounts(user.id).then(setFollowCounts).catch(() => {});
+      // Always fetch real follow status from DB — callers may pass stale/hardcoded values
+      supabase
+        .from('follows')
+        .select('status')
+        .eq('follower_id', currentUserId)
+        .eq('following_id', user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          const status: SearchUser['followStatus'] =
+            data?.status === 'accepted' ? 'accepted'
+            : data?.status === 'pending' ? 'pending'
+            : 'none';
+          setFollowStatus(status);
+          loadFlights(status);
+        })
+        .catch(() => {
+          setFollowStatus(user.followStatus);
+          loadFlights(user.followStatus);
+        });
     }
   }, [visible, user]);
 
