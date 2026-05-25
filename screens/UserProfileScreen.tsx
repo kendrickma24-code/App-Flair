@@ -199,33 +199,116 @@ export default function UserProfileScreen({ theme, isDark, currentUserId }: Prop
     );
     return (
       <View style={styles.listWrap}>
-        {trips.map(trip => (
-          <View key={trip.id} style={[styles.tripCard, { backgroundColor: theme.card, borderColor: theme.sep }]}>
-            {trip.photos.length > 0 && (
-              <Image source={{ uri: trip.photos[0] }} style={styles.tripPhoto} resizeMode="cover" />
-            )}
-            <View style={styles.tripBody}>
-              <Text style={[styles.tripRoute, { color: theme.text }]}>{trip.route}</Text>
-              <Text style={[styles.tripDate, { color: theme.textMuted }]}>
-                {formatDate(trip.startDate)}{trip.startDate !== trip.endDate ? ` — ${formatDate(trip.endDate)}` : ''}
-              </Text>
-              <View style={styles.tripLegs}>
-                {trip.legs.map(leg => (
-                  <View key={leg.id} style={styles.legRow}>
-                    <View style={[styles.legDot, { backgroundColor: theme.accent }]} />
-                    <Text style={[styles.legText, { color: theme.textSub }]}>
-                      {leg.fromCode} → {leg.toCode}
-                      {leg.flightNum ? `  ·  ${leg.flightNum}` : ''}
-                    </Text>
-                    <Text style={[styles.legStatus, { color: statusColor(leg.status) }]}>
-                      {statusLabel(leg.status)}
-                    </Text>
-                  </View>
-                ))}
+        {trips.map(trip => {
+          const allPhotos = trip.photos;
+          const stops = [
+            { code: trip.legs[0].fromCode, city: trip.legs[0].fromCity, legAfter: trip.legs[0], isFirst: true },
+            ...trip.legs.map((leg, i) => ({
+              code: leg.toCode,
+              city: leg.toCity,
+              legAfter: trip.legs[i + 1] ?? null,
+              isFirst: false,
+            })),
+          ];
+          const isRoundTrip = trip.legs.length > 1 &&
+            trip.legs[0].fromCode === trip.legs[trip.legs.length - 1].toCode;
+
+          return (
+            <View key={trip.id} style={[styles.tripCard, { backgroundColor: theme.card, borderColor: theme.sep }]}>
+              {/* Header */}
+              <View style={styles.tripHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.tripTitle, { color: theme.text }]} numberOfLines={1}>
+                    {trip.legs[trip.legs.length - 1].toCity || trip.legs[trip.legs.length - 1].toCode}
+                  </Text>
+                  <Text style={[styles.tripDateRange, { color: theme.textMuted }]}>
+                    {formatDate(trip.startDate)}{trip.startDate !== trip.endDate ? ` – ${formatDate(trip.endDate)}` : ''}
+                  </Text>
+                </View>
+                <View style={[styles.tripTypePill, { backgroundColor: theme.accentBg }]}>
+                  <Ionicons
+                    name={isRoundTrip ? 'repeat-outline' : trip.legs.length > 1 ? 'shuffle-outline' : 'arrow-forward-outline'}
+                    size={10} color={theme.accent}
+                  />
+                  <Text style={[styles.tripTypePillText, { color: theme.accent }]}>
+                    {isRoundTrip ? 'Round trip' : trip.legs.length > 1 ? 'Multi-city' : 'One way'}
+                  </Text>
+                </View>
               </View>
+
+              {/* Breadcrumb */}
+              <View style={styles.tripBreadcrumb}>
+                {[trip.legs[0].fromCode, ...trip.legs.map(l => l.toCode)].map((code, ci, arr) => (
+                  <React.Fragment key={ci}>
+                    {ci > 0 && <Ionicons name="arrow-forward" size={10} color={theme.textMuted} style={{ marginTop: 1 }} />}
+                    <Text style={[styles.tripBreadcrumbCode, { color: theme.textMuted }]}>{code}</Text>
+                  </React.Fragment>
+                ))}
+                <Text style={[styles.tripLegCount, { color: theme.textMuted }]}>
+                  {'  ·  '}{trip.legs.length} {trip.legs.length === 1 ? 'flight' : 'flights'}
+                </Text>
+              </View>
+
+              <View style={[styles.tripDivider, { backgroundColor: theme.sep }]} />
+
+              {/* Photos */}
+              {allPhotos.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                  style={styles.tripPhotoStrip} contentContainerStyle={{ gap: 6, paddingHorizontal: 16, paddingVertical: 10 }}>
+                  {allPhotos.map((uri, i) => (
+                    <Image key={i} source={{ uri }} style={styles.tripPhotoThumb} resizeMode="cover" />
+                  ))}
+                </ScrollView>
+              )}
+
+              {allPhotos.length > 0 && <View style={[styles.tripDivider, { backgroundColor: theme.sep }]} />}
+
+              {/* Timeline */}
+              <View style={styles.tripTimeline}>
+                {stops.map((stop, si) => {
+                  const isLast = si === stops.length - 1;
+                  const isEndpoint = stop.isFirst || (isLast && isRoundTrip);
+                  return (
+                    <View key={si} style={styles.stopRow}>
+                      <View style={styles.railCol}>
+                        <View style={[styles.stopDot, isEndpoint
+                          ? { backgroundColor: theme.accent }
+                          : { backgroundColor: 'transparent', borderWidth: 2, borderColor: theme.accent }
+                        ]} />
+                        {!isLast && <View style={[styles.railLine, { backgroundColor: theme.sep }]} />}
+                      </View>
+                      <View style={[styles.stopContent, isLast && { paddingBottom: 0 }]}>
+                        <Text style={[styles.stopCode, { color: theme.text }]}>{stop.code}</Text>
+                        {stop.city ? <Text style={[styles.stopCity, { color: theme.textMuted }]}>{stop.city}</Text> : null}
+                        {stop.legAfter && (
+                          <View style={styles.flightRowInner}>
+                            <Ionicons name="airplane-outline" size={11} color={theme.textMuted} style={{ marginTop: 1 }} />
+                            {stop.legAfter.flightNum ? (
+                              <Text style={[styles.flightNumText, { color: theme.textSub }]}>{stop.legAfter.flightNum}</Text>
+                            ) : null}
+                            <Text style={[styles.flightDateText, { color: theme.textMuted }]}>
+                              {(() => { const p = stop.legAfter.date.split('-'); return p.length === 3 ? `${p[1]}-${p[0]}` : stop.legAfter.date; })()}
+                            </Text>
+                            {stop.legAfter.status === 'live' ? (
+                              <View style={[styles.logBadge, { backgroundColor: theme.liveBg }]}>
+                                <Text style={[styles.logBadgeText, { color: theme.live }]}>LIVE</Text>
+                              </View>
+                            ) : stop.legAfter.status === 'upcoming' ? (
+                              <View style={[styles.logBadge, { backgroundColor: theme.upcomingBg }]}>
+                                <Text style={[styles.logBadgeText, { color: theme.upcoming }]}>UPCOMING</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+              <View style={{ height: 6 }} />
             </View>
-          </View>
-        ))}
+          );
+        })}
       </View>
     );
   }
@@ -237,38 +320,48 @@ export default function UserProfileScreen({ theme, isDark, currentUserId }: Prop
         <Text style={[styles.emptyText, { color: theme.textMuted }]}>No flights logged yet</Text>
       </View>
     );
+    const sorted = [...flights].sort((a, b) => parseDate(b.date) - parseDate(a.date));
     return (
-      <View style={styles.listWrap}>
-        {flights.map(f => (
-          <View key={f.id} style={[styles.flightCard, { backgroundColor: theme.card }]}>
-            <View style={styles.flightRowTop}>
-              <View style={[styles.flightIcon, { backgroundColor: theme.accentBg }]}>
-                <Ionicons name="airplane-outline" size={16} color={theme.accent} />
-              </View>
-              <View style={styles.flightInfo}>
-                <View style={styles.routeRow}>
-                  <Text style={[styles.routeCode, { color: theme.text }]}>{f.fromCode}</Text>
-                  <Ionicons name="arrow-forward" size={11} color={theme.accent} />
-                  <Text style={[styles.routeCode, { color: theme.text }]}>{f.toCode}</Text>
+      <View style={styles.logbook}>
+        {sorted.map((f, i) => {
+          const p = f.date.split('-');
+          const dateObj = p.length === 3
+            ? new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]))
+            : null;
+          const mon = dateObj ? dateObj.toLocaleString('default', { month: 'short' }).toUpperCase() : '';
+          const day = dateObj ? dateObj.getDate() : '';
+          return (
+            <View key={f.id}>
+              {i > 0 && <View style={[styles.logDivider, { backgroundColor: theme.sep }]} />}
+              <View style={styles.logRow}>
+                <View style={styles.logDate}>
+                  <Text style={[styles.logMon, { color: theme.textMuted }]}>{mon}</Text>
+                  <Text style={[styles.logDay, { color: theme.text }]}>{day}</Text>
                 </View>
-                <Text style={[styles.flightMeta, { color: theme.textMuted }]}>
-                  {f.flightNum ? `${f.flightNum} · ` : ''}{formatDate(f.date)}
-                </Text>
+                <View style={styles.logInfo}>
+                  <Text style={[styles.logRoute, { color: theme.text }]}>{f.fromCode} → {f.toCode}</Text>
+                  {f.flightNum ? (
+                    <Text style={[styles.logMeta, { color: theme.textMuted }]}>{f.flightNum}</Text>
+                  ) : null}
+                </View>
+                {f.status === 'live' ? (
+                  <View style={[styles.logBadge, { backgroundColor: theme.liveBg }]}>
+                    <View style={[styles.logLiveDot, { backgroundColor: theme.live }]} />
+                    <Text style={[styles.logBadgeText, { color: theme.live }]}>LIVE</Text>
+                  </View>
+                ) : f.status === 'upcoming' ? (
+                  <View style={[styles.logBadge, { backgroundColor: theme.upcomingBg }]}>
+                    <Text style={[styles.logBadgeText, { color: theme.upcoming }]}>UPCOMING</Text>
+                  </View>
+                ) : (
+                  <View style={[styles.logBadge, { backgroundColor: theme.pastBg ?? theme.surface }]}>
+                    <Text style={[styles.logBadgeText, { color: theme.past }]}>PAST</Text>
+                  </View>
+                )}
               </View>
-              <Text style={[styles.flightStatus, { color: statusColor(f.status) }]}>
-                {statusLabel(f.status)}
-              </Text>
             </View>
-            {f.photos.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                style={styles.photoStrip} contentContainerStyle={{ gap: 6 }}>
-                {f.photos.map((uri, i) => (
-                  <Image key={i} source={{ uri }} style={styles.photo} resizeMode="cover" />
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        ))}
+          );
+        })}
       </View>
     );
   }
@@ -405,29 +498,50 @@ const styles = StyleSheet.create({
   tabBtn: { flex: 1, paddingVertical: 13, alignItems: 'center', borderBottomWidth: 2.5, borderBottomColor: 'transparent' },
   tabText: { fontSize: 14, fontWeight: '600' },
 
-  listWrap: { paddingHorizontal: 16, paddingTop: 12, gap: 10 },
+  listWrap: { paddingHorizontal: 16, paddingTop: 12, gap: 14 },
 
-  tripCard: { borderRadius: 16, overflow: 'hidden', borderWidth: 0.5 },
-  tripPhoto: { width: '100%', height: 140 },
-  tripBody: { padding: 14, gap: 4 },
-  tripRoute: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  tripDate: { fontSize: 12, fontWeight: '500', marginBottom: 8 },
-  tripLegs: { gap: 6 },
-  legRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  legDot: { width: 6, height: 6, borderRadius: 3 },
-  legText: { flex: 1, fontSize: 13, fontWeight: '500' },
-  legStatus: { fontSize: 11, fontWeight: '700' },
+  // ── Trip card (matches TripCard style) ──
+  tripCard: {
+    borderRadius: 20, borderWidth: 1, overflow: 'hidden',
+    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 }, elevation: 4,
+  },
+  tripHeader: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, gap: 10 },
+  tripTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, lineHeight: 23 },
+  tripDateRange: { fontSize: 12, fontWeight: '600', marginTop: 3 },
+  tripTypePill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 20, marginTop: 2 },
+  tripTypePillText: { fontSize: 10, fontWeight: '700' },
+  tripBreadcrumb: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap', paddingHorizontal: 16, paddingBottom: 8 },
+  tripBreadcrumbCode: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
+  tripLegCount: { fontSize: 11, fontWeight: '500' },
+  tripDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: 16 },
+  tripPhotoStrip: { maxHeight: 110 },
+  tripPhotoThumb: { width: 96, height: 80, borderRadius: 10 },
+  tripTimeline: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 },
+  stopRow: { flexDirection: 'row' },
+  railCol: { width: 20, alignItems: 'center' },
+  stopDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
+  railLine: { width: 2, flex: 1, minHeight: 24, marginTop: 3 },
+  stopContent: { flex: 1, paddingLeft: 10, paddingBottom: 8 },
+  stopCode: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3, lineHeight: 21 },
+  stopCity: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+  flightRowInner: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
+  flightNumText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
+  flightDateText: { fontSize: 11, fontWeight: '500', flex: 1 },
 
-  flightCard: { borderRadius: 14, overflow: 'hidden' },
-  flightRowTop: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
-  flightIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  flightInfo: { flex: 1 },
-  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  routeCode: { fontSize: 15, fontWeight: '800' },
-  flightMeta: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  flightStatus: { fontSize: 12, fontWeight: '700' },
-  photoStrip: { paddingHorizontal: 14, paddingBottom: 12 },
-  photo: { width: 120, height: 90, borderRadius: 10 },
+  // ── Logbook (matches ProfileScreen style) ──
+  logbook: { paddingHorizontal: 20, paddingTop: 8 },
+  logDivider: { height: StyleSheet.hairlineWidth },
+  logRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, gap: 14 },
+  logDate: { alignItems: 'center', width: 32 },
+  logMon: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
+  logDay: { fontSize: 20, fontWeight: '800', lineHeight: 24 },
+  logInfo: { flex: 1 },
+  logRoute: { fontSize: 15, fontWeight: '700', letterSpacing: -0.2 },
+  logMeta: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  logBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 20 },
+  logLiveDot: { width: 5, height: 5, borderRadius: 3 },
+  logBadgeText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.4 },
 
   locked: { alignItems: 'center', paddingTop: 48, paddingHorizontal: 40, gap: 12 },
   lockIconWrap: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
