@@ -401,7 +401,7 @@ const styles = StyleSheet.create({
   followBtn: { paddingHorizontal: 32, paddingVertical: 11, borderRadius: 22 },
   followBtnText: { fontSize: 15, fontWeight: '700' },
 
-  tabRow: { flexDirection: 'row', borderBottomWidth: 0.5, marginBottom: 4 },
+  tabRow: { flexDirection: 'row', borderBottomWidth: 0.5, marginBottom: 4, marginTop: 20 },
   tabBtn: { flex: 1, paddingVertical: 13, alignItems: 'center', borderBottomWidth: 2.5, borderBottomColor: 'transparent' },
   tabText: { fontSize: 14, fontWeight: '600' },
 

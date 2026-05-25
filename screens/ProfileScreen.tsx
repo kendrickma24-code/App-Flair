@@ -344,7 +344,7 @@ export default function ProfileScreen({
           visitedCountryIds={visitedCountryIds}
           visitedStateCodes={visitedStateCodes}
           routes={flightRoutes}
-          verticalOffset={isLandscape ? 0 : 120}
+          verticalOffset={isLandscape ? 0 : 60}
           scale={GLOBE_SCALE}
           onRegionTap={handleGlobeRegionTap}
           onRouteTap={openRouteSheet}
