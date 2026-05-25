@@ -4,8 +4,6 @@ import {
   Image, ScrollView, Modal, StatusBar, Dimensions,
   TextInput, Keyboard, Animated, Easing,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Theme } from '../constants/theme';
 import { Trip } from '../services/tripGrouping';
@@ -39,9 +37,15 @@ function parseDDMMYYYY(d: string): Date | null {
 }
 
 function fmtShort(s: string): string {
-  const d = parseDDMMYYYY(s);
-  if (!d) return s;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const p = s.split('-');
+  if (p.length !== 3) return s;
+  return `${p[1]}-${p[0]}`;
+}
+
+function fmtFull(s: string): string {
+  const p = s.split('-');
+  if (p.length !== 3) return s;
+  return `${p[1]}-${p[0]}-${p[2].slice(-2)}`;
 }
 
 function fmtRange(start: string, end: string | null): string {
@@ -50,7 +54,7 @@ function fmtRange(start: string, end: string | null): string {
   if (!s || !e) return `${fmtShort(start)} – ${fmtShort(end)}`;
   return s.getFullYear() === e.getFullYear()
     ? `${fmtShort(start)} – ${fmtShort(end)}`
-    : `${fmtShort(start)} – ${e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    : `${fmtShort(start)} – ${fmtFull(end)}`;
 }
 
 function stayDays(d1: string, d2: string): number {
@@ -175,15 +179,15 @@ function TypePill({ type, theme }: { type: TripType; theme: Theme }) {
     multicity: { icon: 'shuffle-outline' as const,        label: 'Multi-city' },
   }[type];
   return (
-    <View style={[tp.wrap, { backgroundColor: 'rgba(255,255,255,0.18)' }]}>
-      <Ionicons name={cfg.icon} size={10} color="#fff" />
-      <Text style={tp.text}>{cfg.label}</Text>
+    <View style={[tp.wrap, { backgroundColor: theme.accentBg }]}>
+      <Ionicons name={cfg.icon} size={10} color={theme.accent} />
+      <Text style={[tp.text, { color: theme.accent }]}>{cfg.label}</Text>
     </View>
   );
 }
 const tp = StyleSheet.create({
   wrap: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 20 },
-  text: { fontSize: 10, fontWeight: '700', color: '#fff' },
+  text: { fontSize: 10, fontWeight: '700' },
 });
 
 // ── Status badge ───────────────────────────────────────────────────────────
@@ -219,7 +223,6 @@ export default function TripCard({ trip, theme, isDark = true, onOpen, onDeleteT
   const [nameInput, setNameInput]       = useState('');
   const nameRef = useRef<TextInput>(null);
   const [failed, setFailed]             = useState<Set<string>>(new Set());
-  const [heroFailed, setHeroFailed]     = useState(false);
   const [editing, setEditing]           = useState<Flight | null>(null);
   const [sheetOpen, setSheetOpen]       = useState(false);
   const pulse = useRef(new Animated.Value(1)).current;
@@ -230,9 +233,7 @@ export default function TripCard({ trip, theme, isDark = true, onOpen, onDeleteT
   const dateRange    = fmtRange(trip.departedAt, trip.returnedAt);
   const hasLive      = trip.legs.some(l => l.status === 'live');
   const allPhotos    = trip.legs.flatMap(l => l.photos ?? []).filter(u => !failed.has(u));
-  const heroPhoto    = !heroFailed ? (allPhotos[0] ?? null) : null;
   const firstNote    = trip.legs.find(l => l.note)?.note;
-  const gradient     = destGradient(trip, isDark);
 
   // Build stops
   const stops = [
@@ -290,90 +291,59 @@ export default function TripCard({ trip, theme, isDark = true, onOpen, onDeleteT
     else   AsyncStorage.removeItem(`trip_name_${trip.id}`).catch(() => {});
   }
 
-  // Extra photos beyond the hero (for the strip below the timeline)
-  const extraPhotos = allPhotos.slice(1).filter(u => !failed.has(u));
+  const extraPhotos = allPhotos.filter(u => !failed.has(u));
 
 
   return (
     <>
-      <View style={s.card}>
+      <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.sep }]}>
 
         <TouchableOpacity activeOpacity={0.97} onPress={onOpen}>
 
-          {/* ── Hero section ── */}
-          <View style={s.hero}>
-            {/* Background: photo or destination gradient */}
-            {heroPhoto ? (
-              <Image
-                source={{ uri: heroPhoto }}
-                style={StyleSheet.absoluteFill}
-                resizeMode="cover"
-                onError={() => setHeroFailed(true)}
-              />
-            ) : (
-              <LinearGradient
-                colors={[gradient[0], gradient[1]]}
-                start={{ x: 0.3, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-            )}
-
-            {/* Gradient overlay — fades to card bg at bottom */}
-            <LinearGradient
-              colors={['rgba(0,0,0,0.10)', 'rgba(0,0,0,0.55)']}
-              style={StyleSheet.absoluteFill}
-            />
-
-            {/* Header overlaid on hero */}
-            <View style={s.heroContent}>
-              <View style={s.heroLeft}>
-                {isRenaming ? (
-                  <TextInput
-                    ref={nameRef}
-                    style={s.nameInput}
-                    value={nameInput}
-                    onChangeText={setNameInput}
-                    onSubmitEditing={commitRename}
-                    onBlur={commitRename}
-                    placeholder={fallback}
-                    placeholderTextColor="rgba(255,255,255,0.5)"
-                    returnKeyType="done"
-                    selectionColor="#fff"
-                    autoCapitalize="words"
-                  />
-                ) : (
-                  <Text style={s.tripTitle} numberOfLines={1}>{title}</Text>
-                )}
-                <View style={s.heroMeta}>
-                  <Text style={s.dateRange}>{dateRange}</Text>
-                  <TypePill type={type} theme={theme} />
-                </View>
+          {/* ── Flat header ── */}
+          <View style={s.header}>
+            <View style={s.headerLeft}>
+              {isRenaming ? (
+                <TextInput
+                  ref={nameRef}
+                  style={[s.nameInput, { color: theme.text }]}
+                  value={nameInput}
+                  onChangeText={setNameInput}
+                  onSubmitEditing={commitRename}
+                  onBlur={commitRename}
+                  placeholder={fallback}
+                  placeholderTextColor={theme.textMuted}
+                  returnKeyType="done"
+                  selectionColor={theme.accent}
+                  autoCapitalize="words"
+                />
+              ) : (
+                <Text style={[s.tripTitle, { color: theme.text }]} numberOfLines={1}>{title}</Text>
+              )}
+              <View style={s.headerMeta}>
+                <Text style={[s.dateRange, { color: theme.textMuted }]}>{dateRange}</Text>
+                <TypePill type={type} theme={theme} />
               </View>
+            </View>
 
-              <View style={s.heroRight}>
-                {isRenaming ? (
-                  <TouchableOpacity onPress={e => { e.stopPropagation?.(); commitRename(); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                    <View style={s.iconBtn}>
-                      <Ionicons name="checkmark" size={16} color="#fff" />
-                    </View>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    onPress={e => { e.stopPropagation?.(); setSheetOpen(true); }}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <View style={s.iconBtn}>
-                      <Ionicons name="ellipsis-horizontal" size={18} color="#fff" />
-                    </View>
-                  </TouchableOpacity>
-                )}
-              </View>
+            <View style={s.headerRight}>
+              {isRenaming ? (
+                <TouchableOpacity onPress={e => { e.stopPropagation?.(); commitRename(); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Ionicons name="checkmark" size={18} color={theme.accent} />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={e => { e.stopPropagation?.(); setSheetOpen(true); }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={18} color={theme.textMuted} />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
           {/* ── Timeline body ── */}
-          <View style={[s.body, { backgroundColor: isDark ? 'rgba(10,18,35,0.96)' : 'rgba(255,255,255,0.97)' }]}>
+          <View style={s.body}>
 
             {/* Airport sequence breadcrumb */}
             <View style={s.breadcrumb}>
@@ -388,92 +358,8 @@ export default function TripCard({ trip, theme, isDark = true, onOpen, onDeleteT
               </Text>
             </View>
 
-            <View style={[s.divider, { backgroundColor: theme.sep }]} />
-
-            {/* Timeline */}
-            <View style={s.timeline}>
-              {stops.map((stop, si) => {
-                const isLast     = si === stops.length - 1;
-                const isHome     = isLast && type === 'roundtrip';
-                const connecting = !isLast && stop.stay === 0;
-                const stayCity   = stop.city || stop.code;
-
-                return (
-                  <View key={si} style={s.stopRow}>
-                    {/* Rail column */}
-                    <View style={s.railCol}>
-                      <View style={[
-                        s.stopDot,
-                        isHome || stop.isFirst
-                          ? { backgroundColor: theme.accent }
-                          : { backgroundColor: 'transparent', borderWidth: 2, borderColor: theme.accent },
-                      ]} />
-                      {!isLast && <View style={[s.railLine, { backgroundColor: theme.sep }]} />}
-                    </View>
-
-                    {/* Content column */}
-                    <View style={[s.stopContent, !isLast && { paddingBottom: 2 }]}>
-                      <View style={s.cityRow}>
-                        <Text style={[s.stopCode, { color: theme.text }]}>{stop.code}</Text>
-                        {isHome && (
-                          <View style={[s.homePill, { backgroundColor: theme.accentBg }]}>
-                            <Ionicons name="home-outline" size={9} color={theme.accent} />
-                            <Text style={[s.homePillText, { color: theme.accent }]}>home</Text>
-                          </View>
-                        )}
-                      </View>
-                      {stop.city ? (
-                        <Text style={[s.stopCity, { color: theme.textMuted }]} numberOfLines={1}>{stop.city}</Text>
-                      ) : null}
-
-                      {/* Stay chip */}
-                      {!isLast && stop.stay >= 1 && (
-                        <View style={[s.stayChip, { backgroundColor: theme.accentBg }]}>
-                          <Ionicons name="moon-outline" size={10} color={theme.accent} />
-                          <Text style={[s.stayText, { color: theme.accent }]}>
-                            {stop.stay === 1 ? '1 day' : `${stop.stay} days`} in {stayCity}
-                          </Text>
-                        </View>
-                      )}
-                      {connecting && (
-                        <Text style={[s.connectingText, { color: theme.textMuted }]}>Connecting</Text>
-                      )}
-
-                      {/* Departing flight row */}
-                      {stop.legAfter && (
-                        <View style={s.flightRow}>
-                          <Ionicons name="airplane-outline" size={11} color={theme.textMuted} style={{ marginTop: 1 }} />
-                          <View style={s.flightMeta}>
-                            {stop.legAfter.flightNum ? (
-                              <Text style={[s.flightNum, { color: theme.textSub }]}>{stop.legAfter.flightNum}</Text>
-                            ) : null}
-                            {stop.legAfter.flightNum && stop.legAfter.duration ? (
-                              <Text style={[s.dotSep, { color: theme.textMuted }]}>·</Text>
-                            ) : null}
-                            {stop.legAfter.duration ? (
-                              <Text style={[s.flightDuration, { color: theme.textMuted }]}>{stop.legAfter.duration}</Text>
-                            ) : null}
-                          </View>
-                          <Text style={[s.flightDate, { color: theme.textMuted }]}>{fmtShort(stop.legAfter.date)}</Text>
-                          <StatusBadge status={stop.legAfter.status} theme={theme} pulse={pulse} />
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-
-            {/* Note */}
-            {firstNote ? (
-              <>
-                <View style={[s.divider, { backgroundColor: theme.sep }]} />
-                <Text style={[s.note, { color: theme.textSub }]} numberOfLines={2}>{firstNote}</Text>
-              </>
-            ) : null}
-
-            {/* Extra photos strip (photos beyond the hero) */}
-            {extraPhotos.length > 0 ? (
+            {/* Combined photos from all legs */}
+            {extraPhotos.length > 0 && (
               <>
                 <View style={[s.divider, { backgroundColor: theme.sep }]} />
                 <ScrollView
@@ -481,6 +367,8 @@ export default function TripCard({ trip, theme, isDark = true, onOpen, onDeleteT
                   showsHorizontalScrollIndicator={false}
                   style={s.photoStrip}
                   contentContainerStyle={s.photoContent}
+                  snapToInterval={114}
+                  decelerationRate="fast"
                 >
                   {extraPhotos.map((uri, pi) => (
                     <TouchableOpacity key={pi} activeOpacity={0.88} onPress={() => setLightboxUri(uri)}>
@@ -494,7 +382,33 @@ export default function TripCard({ trip, theme, isDark = true, onOpen, onDeleteT
                   ))}
                 </ScrollView>
               </>
-            ) : null}
+            )}
+
+            {/* Individual flights */}
+            {trip.legs.map((leg, li) => (
+              <View key={leg.id}>
+                <View style={[s.divider, { backgroundColor: theme.sep }]} />
+                <View style={s.legRow}>
+                  <View style={s.legRouteWrap}>
+                    <Text style={[s.legCode, { color: theme.text }]}>{leg.from.code}</Text>
+                    <Ionicons name="arrow-forward" size={12} color={theme.accent} />
+                    <Text style={[s.legCode, { color: theme.text }]}>{leg.to.code}</Text>
+                  </View>
+                  <View style={s.legMeta}>
+                    {leg.flightNum ? <Text style={[s.legMetaText, { color: theme.textSub }]}>{leg.flightNum}</Text> : null}
+                    {leg.flightNum ? <Text style={[s.legMetaDot, { color: theme.textMuted }]}>·</Text> : null}
+                    <Text style={[s.legMetaText, { color: theme.textMuted }]}>{fmtShort(leg.date)}</Text>
+                    {leg.duration ? (
+                      <>
+                        <Text style={[s.legMetaDot, { color: theme.textMuted }]}>·</Text>
+                        <Text style={[s.legMetaText, { color: theme.textMuted }]}>{leg.duration}</Text>
+                      </>
+                    ) : null}
+                  </View>
+                  <StatusBadge status={leg.status} theme={theme} pulse={pulse} />
+                </View>
+              </View>
+            ))}
 
             {/* Return suggestion */}
             {trip.legs.length === 1 && onAddReturn ? (
@@ -504,7 +418,7 @@ export default function TripCard({ trip, theme, isDark = true, onOpen, onDeleteT
                 activeOpacity={0.75}
               >
                 <Ionicons name="swap-horizontal-outline" size={14} color={theme.accent} />
-                <Text style={[s.returnPillText, { color: theme.accent }]}>Add return flight</Text>
+                <Text style={[s.returnPillText, { color: theme.accent }]}>Add flight</Text>
               </TouchableOpacity>
             ) : null}
 
@@ -562,30 +476,22 @@ export default function TripCard({ trip, theme, isDark = true, onOpen, onDeleteT
 const s = StyleSheet.create({
   card: {
     borderRadius: 20, marginBottom: 14, overflow: 'hidden',
-    shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 24,
-    shadowOffset: { width: 0, height: 8 }, elevation: 8,
+    borderWidth: 1,
+    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 }, elevation: 4,
   },
 
-  // ── Hero ──
-  hero: {
-    height: 170,
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
+  // ── Flat header ──
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12,
   },
-  heroContent: {
-    flexDirection: 'row', alignItems: 'flex-end',
-    paddingHorizontal: 16, paddingBottom: 14, paddingTop: 10,
-  },
-  heroLeft:  { flex: 1, marginRight: 8 },
-  heroRight: { alignItems: 'flex-end', paddingBottom: 2 },
-  tripTitle: { fontSize: 18, fontWeight: '800', color: '#fff', letterSpacing: -0.3, lineHeight: 23, textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
-  nameInput: { fontSize: 18, fontWeight: '800', color: '#fff', paddingVertical: 2, marginBottom: 2 },
-  heroMeta:  { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, flexWrap: 'wrap' },
-  dateRange: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.85)' },
-  iconBtn:   {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: 'rgba(0,0,0,0.32)', alignItems: 'center', justifyContent: 'center',
-  },
+  headerLeft:  { flex: 1, marginRight: 8 },
+  headerRight: { alignItems: 'flex-end' },
+  tripTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, lineHeight: 23 },
+  nameInput: { fontSize: 18, fontWeight: '800', paddingVertical: 2, marginBottom: 2 },
+  headerMeta:  { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, flexWrap: 'wrap' },
+  dateRange: { fontSize: 12, fontWeight: '600' },
 
   // ── Body (timeline + below) ──
   body: { borderBottomLeftRadius: 20, borderBottomRightRadius: 20 },
@@ -632,15 +538,23 @@ const s = StyleSheet.create({
   // Note
   note: { fontSize: 13, fontWeight: '500', lineHeight: 18, paddingHorizontal: 16, paddingVertical: 10 },
 
-  // Extra photos
-  photoStrip:   { maxHeight: 90 },
-  photoContent: { paddingHorizontal: 16, paddingVertical: 8, gap: 6, flexDirection: 'row' },
-  photo:        { width: 78, height: 72, borderRadius: 10 },
+  // Photos
+  photoStrip:   { maxHeight: 108 },
+  photoContent: { paddingHorizontal: 16, paddingVertical: 10, gap: 8, flexDirection: 'row' },
+  photo:        { width: 106, height: 88, borderRadius: 12 },
+
+  // Individual flight rows
+  legRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
+  legRouteWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 90 },
+  legCode: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  legMeta: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
+  legMetaText: { fontSize: 12, fontWeight: '500' },
+  legMetaDot: { fontSize: 12 },
 
   // Return pill
   returnPill: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    marginHorizontal: 16, marginTop: 10, paddingVertical: 9,
+    marginHorizontal: 16, marginTop: 10, marginBottom: 8, paddingVertical: 9,
     borderRadius: 12, borderWidth: 1, borderStyle: 'dashed',
   },
   returnPillText: { fontSize: 13, fontWeight: '600' },

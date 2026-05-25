@@ -100,37 +100,35 @@ const sb = StyleSheet.create({
   text: { fontSize: 9, fontWeight: '700', letterSpacing: 0.4 },
 });
 
-// ── Photo strip ────────────────────────────────────────────────────────────
-const PHOTO_W = W - 32 - 40;
-
-function PhotoStrip({ photos, theme }: { photos: string[]; theme: Theme }) {
+// ── Full-width photo pager (snaps correctly) ───────────────────────────────
+function LegPhotoCarousel({ photos }: { photos: string[] }) {
   const [idx, setIdx] = useState(0);
   if (!photos.length) return null;
   return (
-    <View style={ph.wrap}>
+    <View>
       <ScrollView
-        horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={e => setIdx(Math.round(e.nativeEvent.contentOffset.x / PHOTO_W))}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={e => setIdx(Math.round(e.nativeEvent.contentOffset.x / W))}
       >
         {photos.map((uri, i) => (
-          <Image key={i} source={{ uri }} style={[ph.img, { width: PHOTO_W }]} resizeMode="cover" />
+          <Image key={i} source={{ uri }} style={{ width: W, height: W * 0.72 }} resizeMode="cover" />
         ))}
       </ScrollView>
       {photos.length > 1 && (
-        <View style={ph.dots}>
+        <View style={pc.dots}>
           {photos.map((_, i) => (
-            <View key={i} style={[ph.dot, { opacity: i === idx ? 0.85 : 0.22 }]} />
+            <View key={i} style={[pc.dot, { backgroundColor: i === idx ? '#fff' : 'rgba(255,255,255,0.45)' }]} />
           ))}
         </View>
       )}
     </View>
   );
 }
-const ph = StyleSheet.create({
-  wrap: { marginTop: 0, marginBottom: 0, overflow: 'hidden' },
-  img:  { height: PHOTO_W * 0.68 },
-  dots: { position: 'absolute', bottom: 8, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 4 },
-  dot:  { width: 4, height: 4, borderRadius: 2, backgroundColor: '#fff' },
+const pc = StyleSheet.create({
+  dots: { position: 'absolute', bottom: 10, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 5 },
+  dot:  { width: 6, height: 6, borderRadius: 3 },
 });
 
 // ── Trip post ──────────────────────────────────────────────────────────────
@@ -211,17 +209,10 @@ function TripPost({
     else   AsyncStorage.removeItem(`trip_name_${trip.id}`).catch(() => {});
   }
 
-  const allPhotos = trip.legs.flatMap(l => l.photos ?? []);
-
   return (
     <View style={[s.post, { backgroundColor: theme.card, borderColor: theme.sep }]}>
 
-      {/* ── Hero photo gallery ── */}
-      {allPhotos.length > 0 && (
-        <PhotoStrip photos={allPhotos} theme={theme} />
-      )}
-
-      {/* ── Header ── */}
+      {/* ── Trip header ── */}
       <View style={s.header}>
         <View style={{ flex: 1 }}>
           {isRenaming ? (
@@ -246,7 +237,6 @@ function TripPost({
             <TypePill type={type} theme={theme} />
           </View>
         </View>
-
         {isRenaming ? (
           <TouchableOpacity onPress={commitRename} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <View style={[s.menuBtn, { backgroundColor: theme.accentBg }]}>
@@ -275,82 +265,47 @@ function TripPost({
         </Text>
       </View>
 
-      <View style={[s.divider, { backgroundColor: theme.sep }]} />
+      {/* ── Individual flights (FlightDetailModal style) ── */}
+      {trip.legs.map((leg, li) => (
+        <View key={leg.id}>
+          <View style={[s.divider, { backgroundColor: theme.sep }]} />
 
-      {/* ── Journey timeline ── */}
-      <View style={s.journey}>
-        {stops.map((stop, si) => {
-          const isLast     = si === stops.length - 1;
-          const isHome     = isLast && type === 'roundtrip';
-          const isEndpoint = stop.isFirst || isHome;
-          const stayCity   = stop.city || stop.code;
-          const leg        = stop.legAfter;
+          {/* Photos for this flight */}
+          <LegPhotoCarousel photos={leg.photos ?? []} />
 
-          return (
-            <View key={si} style={s.stopWrap}>
-
-              {/* ── Rail column ── */}
-              <View style={s.railCol}>
-                <View style={[
-                  s.dot,
-                  isEndpoint
-                    ? { backgroundColor: theme.accent }
-                    : { backgroundColor: 'transparent', borderWidth: 2, borderColor: theme.accent },
-                ]} />
-                {!isLast && <View style={[s.railLine, { backgroundColor: theme.sep }]} />}
+          {/* Flight info */}
+          <View style={s.legInfo}>
+            <View style={s.routeRow}>
+              <Text style={[s.routeCode, { color: theme.text }]}>{leg.from.code}</Text>
+              <View style={s.routeLine}>
+                <View style={[s.routeDash, { backgroundColor: theme.sep }]} />
+                <Ionicons name="airplane" size={16} color={theme.accent} />
+                <View style={[s.routeDash, { backgroundColor: theme.sep }]} />
               </View>
-
-              {/* ── Stop content ── */}
-              <View style={[s.stopContent, isLast && { paddingBottom: 0 }]}>
-
-                {/* Airport */}
-                <Text style={[s.code, { color: theme.text }]}>{stop.code}</Text>
-                {stop.city ? (
-                  <Text style={[s.city, { color: theme.textMuted }]}>{stop.city}</Text>
-                ) : null}
-
-                {/* Photos */}
-                {stop.photos.length > 0 && (
-                  <PhotoStrip photos={stop.photos} theme={theme} />
-                )}
-
-                {/* Stay chip — matches TripCard */}
-                {!isLast && stop.stay >= 1 && (
-                  <View style={[s.stayChip, { backgroundColor: theme.accentBg }]}>
-                    <Ionicons name="moon-outline" size={10} color={theme.accent} />
-                    <Text style={[s.stayText, { color: theme.accent }]}>
-                      {stop.stay === 1 ? '1 night' : `${stop.stay} nights`} in {stayCity}
-                    </Text>
-                  </View>
-                )}
-
-                {/* Flight row — matches TripCard layout */}
-                {leg && (
-                  <View style={s.flightBlock}>
-                    <View style={s.flightRow}>
-                      <Ionicons name="airplane-outline" size={11} color={theme.textMuted} style={{ marginTop: 1 }} />
-                      <View style={s.flightMeta}>
-                        {leg.flightNum ? (
-                          <Text style={[s.flightNum, { color: theme.textSub }]}>{leg.flightNum}</Text>
-                        ) : null}
-                        {leg.flightNum && leg.duration ? (
-                          <Text style={[s.dotSep, { color: theme.textMuted }]}>·</Text>
-                        ) : null}
-                        {leg.duration ? (
-                          <Text style={[s.flightDuration, { color: theme.textMuted }]}>{leg.duration}</Text>
-                        ) : null}
-                      </View>
-                      <Text style={[s.flightDate, { color: theme.textMuted }]}>{fmtShort(leg.date)}</Text>
-                      <StatusBadge status={leg.status} theme={theme} pulse={pulse} />
-                    </View>
-                  </View>
-                )}
-
-              </View>
+              <Text style={[s.routeCode, { color: theme.text }]}>{leg.to.code}</Text>
             </View>
-          );
-        })}
-      </View>
+            {(leg.from.city || leg.to.city) && (
+              <View style={s.cityRow}>
+                <Text style={[s.cityText, { color: theme.textMuted }]}>{leg.from.city ?? ''}</Text>
+                <Text style={[s.cityText, { color: theme.textMuted }]}>{leg.to.city ?? ''}</Text>
+              </View>
+            )}
+            <View style={s.metaRow}>
+              {leg.flightNum ? <Text style={[s.metaText, { color: theme.textSub }]}>{leg.flightNum}</Text> : null}
+              {leg.flightNum ? <View style={[s.metaDot, { backgroundColor: theme.textMuted }]} /> : null}
+              <Text style={[s.metaText, { color: theme.textMuted }]}>{fmtShort(leg.date)}</Text>
+              {leg.duration ? (
+                <>
+                  <View style={[s.metaDot, { backgroundColor: theme.textMuted }]} />
+                  <Text style={[s.metaText, { color: theme.textMuted }]}>{leg.duration}</Text>
+                </>
+              ) : null}
+              <StatusBadge status={leg.status} theme={theme} pulse={pulse} />
+            </View>
+            {leg.note ? <Text style={[s.note, { color: theme.textSub }]}>{leg.note}</Text> : null}
+          </View>
+        </View>
+      ))}
 
       <TripActionSheet
         visible={sheetOpen}
@@ -504,49 +459,16 @@ const s = StyleSheet.create({
     paddingHorizontal: 18, paddingTop: 12, paddingBottom: 20,
   },
 
-  stopWrap: { flexDirection: 'row' },
-
-  // Rail
-  railCol:  { width: 22, alignItems: 'center', paddingTop: 4 },
-  dot: {
-    width: 10, height: 10, borderRadius: 5,
-    zIndex: 1,
-  },
-  railLine: {
-    width: 2, flex: 1, minHeight: 28, marginTop: 4,
-  },
-
-  // Stop content
-  stopContent: {
-    flex: 1, paddingLeft: 12, paddingBottom: 28,
-  },
-  code: {
-    fontSize: 18, fontWeight: '800', letterSpacing: -0.4, lineHeight: 24,
-  },
-  city: {
-    fontSize: 12, fontWeight: '400', marginTop: 1, letterSpacing: 0.1,
-  },
-
-  // Stay chip — matches TripCard
-  stayChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
-    alignSelf: 'flex-start', marginTop: 7, marginBottom: 2,
-  },
-  stayText: { fontSize: 11, fontWeight: '600' },
-
-  // Flight row — matches TripCard layout
-  flightBlock: { marginTop: 8 },
-  flightRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  flightMeta:{ flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 },
-  flightNum: { fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
-  flightDuration: { fontSize: 12, fontWeight: '500' },
-  flightDate:{ fontSize: 12, fontWeight: '500' },
-  dotSep:    { fontSize: 12 },
-
-  // Note
-  note: {
-    fontSize: 13, fontWeight: '400', lineHeight: 19, marginTop: 6,
-    fontStyle: 'italic',
-  },
+  // ── Per-leg FlightDetailModal style ──
+  legInfo: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 20 },
+  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+  routeCode: { fontSize: 32, fontWeight: '900', letterSpacing: -1 },
+  routeLine: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  routeDash: { flex: 1, height: 1 },
+  cityRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  cityText: { fontSize: 12 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 6 },
+  metaText: { fontSize: 13, fontWeight: '500' },
+  metaDot: { width: 3, height: 3, borderRadius: 2 },
+  note: { fontSize: 14, lineHeight: 20, marginTop: 4 },
 });

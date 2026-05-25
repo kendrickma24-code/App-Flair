@@ -238,7 +238,7 @@ export default function UserProfileScreen({ theme, isDark, currentUserId }: Prop
 
               {/* Breadcrumb */}
               <View style={styles.tripBreadcrumb}>
-                {[trip.legs[0].fromCode, ...trip.legs.map(l => l.toCode)].map((code, ci, arr) => (
+                {[trip.legs[0].fromCode, ...trip.legs.map(l => l.toCode)].map((code, ci) => (
                   <React.Fragment key={ci}>
                     {ci > 0 && <Ionicons name="arrow-forward" size={10} color={theme.textMuted} style={{ marginTop: 1 }} />}
                     <Text style={[styles.tripBreadcrumbCode, { color: theme.textMuted }]}>{code}</Text>
@@ -249,62 +249,54 @@ export default function UserProfileScreen({ theme, isDark, currentUserId }: Prop
                 </Text>
               </View>
 
-              <View style={[styles.tripDivider, { backgroundColor: theme.sep }]} />
-
-              {/* Photos */}
+              {/* Combined photos */}
               {allPhotos.length > 0 && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                  style={styles.tripPhotoStrip} contentContainerStyle={{ gap: 6, paddingHorizontal: 16, paddingVertical: 10 }}>
-                  {allPhotos.map((uri, i) => (
-                    <Image key={i} source={{ uri }} style={styles.tripPhotoThumb} resizeMode="cover" />
-                  ))}
-                </ScrollView>
+                <>
+                  <View style={[styles.tripDivider, { backgroundColor: theme.sep }]} />
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                    style={styles.tripPhotoStrip}
+                    contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingVertical: 10 }}
+                    snapToInterval={114} decelerationRate="fast">
+                    {allPhotos.map((uri, i) => (
+                      <Image key={i} source={{ uri }} style={styles.tripPhotoThumb} resizeMode="cover" />
+                    ))}
+                  </ScrollView>
+                </>
               )}
 
-              {allPhotos.length > 0 && <View style={[styles.tripDivider, { backgroundColor: theme.sep }]} />}
-
-              {/* Timeline */}
-              <View style={styles.tripTimeline}>
-                {stops.map((stop, si) => {
-                  const isLast = si === stops.length - 1;
-                  const isEndpoint = stop.isFirst || (isLast && isRoundTrip);
-                  return (
-                    <View key={si} style={styles.stopRow}>
-                      <View style={styles.railCol}>
-                        <View style={[styles.stopDot, isEndpoint
-                          ? { backgroundColor: theme.accent }
-                          : { backgroundColor: 'transparent', borderWidth: 2, borderColor: theme.accent }
-                        ]} />
-                        {!isLast && <View style={[styles.railLine, { backgroundColor: theme.sep }]} />}
-                      </View>
-                      <View style={[styles.stopContent, isLast && { paddingBottom: 0 }]}>
-                        <Text style={[styles.stopCode, { color: theme.text }]}>{stop.code}</Text>
-                        {stop.city ? <Text style={[styles.stopCity, { color: theme.textMuted }]}>{stop.city}</Text> : null}
-                        {stop.legAfter && (
-                          <View style={styles.flightRowInner}>
-                            <Ionicons name="airplane-outline" size={11} color={theme.textMuted} style={{ marginTop: 1 }} />
-                            {stop.legAfter.flightNum ? (
-                              <Text style={[styles.flightNumText, { color: theme.textSub }]}>{stop.legAfter.flightNum}</Text>
-                            ) : null}
-                            <Text style={[styles.flightDateText, { color: theme.textMuted }]}>
-                              {(() => { const p = stop.legAfter.date.split('-'); return p.length === 3 ? `${p[1]}-${p[0]}` : stop.legAfter.date; })()}
-                            </Text>
-                            {stop.legAfter.status === 'live' ? (
-                              <View style={[styles.logBadge, { backgroundColor: theme.liveBg }]}>
-                                <Text style={[styles.logBadgeText, { color: theme.live }]}>LIVE</Text>
-                              </View>
-                            ) : stop.legAfter.status === 'upcoming' ? (
-                              <View style={[styles.logBadge, { backgroundColor: theme.upcomingBg }]}>
-                                <Text style={[styles.logBadgeText, { color: theme.upcoming }]}>UPCOMING</Text>
-                              </View>
-                            ) : null}
-                          </View>
-                        )}
-                      </View>
+              {/* Individual flights */}
+              {trip.legs.map((leg, li) => (
+                <View key={leg.id}>
+                  <View style={[styles.tripDivider, { backgroundColor: theme.sep }]} />
+                  <View style={styles.legRow}>
+                    <View style={styles.legRouteWrap}>
+                      <Text style={[styles.legCode, { color: theme.text }]}>{leg.fromCode}</Text>
+                      <Ionicons name="arrow-forward" size={12} color={theme.accent} />
+                      <Text style={[styles.legCode, { color: theme.text }]}>{leg.toCode}</Text>
                     </View>
-                  );
-                })}
-              </View>
+                    <View style={styles.legMeta}>
+                      {leg.flightNum ? <Text style={[styles.legMetaText, { color: theme.textSub }]}>{leg.flightNum}</Text> : null}
+                      {leg.flightNum ? <Text style={[styles.legMetaDot, { color: theme.textMuted }]}>·</Text> : null}
+                      <Text style={[styles.legMetaText, { color: theme.textMuted }]}>
+                        {(() => { const p = leg.date.split('-'); return p.length === 3 ? `${p[1]}-${p[0]}` : leg.date; })()}
+                      </Text>
+                    </View>
+                    {leg.status === 'live' ? (
+                      <View style={[styles.logBadge, { backgroundColor: theme.liveBg }]}>
+                        <Text style={[styles.logBadgeText, { color: theme.live }]}>LIVE</Text>
+                      </View>
+                    ) : leg.status === 'upcoming' ? (
+                      <View style={[styles.logBadge, { backgroundColor: theme.upcomingBg }]}>
+                        <Text style={[styles.logBadgeText, { color: theme.upcoming }]}>UPCOMING</Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.logBadge, { backgroundColor: theme.pastBg ?? theme.surface }]}>
+                        <Text style={[styles.logBadgeText, { color: theme.past }]}>PAST</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              ))}
               <View style={{ height: 6 }} />
             </View>
           );
@@ -515,19 +507,14 @@ const styles = StyleSheet.create({
   tripBreadcrumbCode: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
   tripLegCount: { fontSize: 11, fontWeight: '500' },
   tripDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: 16 },
-  tripPhotoStrip: { maxHeight: 110 },
-  tripPhotoThumb: { width: 96, height: 80, borderRadius: 10 },
-  tripTimeline: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 },
-  stopRow: { flexDirection: 'row' },
-  railCol: { width: 20, alignItems: 'center' },
-  stopDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
-  railLine: { width: 2, flex: 1, minHeight: 24, marginTop: 3 },
-  stopContent: { flex: 1, paddingLeft: 10, paddingBottom: 8 },
-  stopCode: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3, lineHeight: 21 },
-  stopCity: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  flightRowInner: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
-  flightNumText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
-  flightDateText: { fontSize: 11, fontWeight: '500', flex: 1 },
+  tripPhotoStrip: { maxHeight: 108 },
+  tripPhotoThumb: { width: 106, height: 88, borderRadius: 12 },
+  legRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
+  legRouteWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 90 },
+  legCode: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  legMeta: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
+  legMetaText: { fontSize: 12, fontWeight: '500' },
+  legMetaDot: { fontSize: 12 },
 
   // ── Logbook (matches ProfileScreen style) ──
   logbook: { paddingHorizontal: 20, paddingTop: 8 },
