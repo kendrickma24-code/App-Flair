@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Modal, StatusBar,
   TextInput, TouchableOpacity, FlatList, ActivityIndicator, Image,
@@ -6,8 +6,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Contacts from 'expo-contacts';
 import { Theme } from '../constants/theme';
-import { SearchUser, searchUsers, sendFollowRequest, unfollowUser } from '../services/db';
+import { SearchUser, searchUsers, findContactsOnFlare, sendFollowRequest, unfollowUser } from '../services/db';
 import UserProfileModal from './UserProfileModal';
 
 interface Props {
@@ -16,6 +17,7 @@ interface Props {
   isDark: boolean;
   currentUserId: string;
   onClose: () => void;
+  onUserPress?: (user: SearchUser) => void;
 }
 
 const AVATAR_COLORS: [string, string][] = [
@@ -31,14 +33,35 @@ function avatarColor(id: string): [string, string] {
   return AVATAR_COLORS[n % AVATAR_COLORS.length];
 }
 
-export default function SearchModal({ visible, theme, isDark, currentUserId, onClose }: Props) {
+export default function SearchModal({ visible, theme, isDark, currentUserId, onClose, onUserPress }: Props) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [followStates, setFollowStates] = useState<Record<string, SearchUser['followStatus']>>({});
   const [selectedUser, setSelectedUser] = useState<SearchUser | null>(null);
+  const [contactMatches, setContactMatches] = useState<SearchUser[]>([]);
+  const [contactsLoaded, setContactsLoaded] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load contact matches once when modal opens
+  useEffect(() => {
+    if (!visible || contactsLoaded) return;
+    (async () => {
+      try {
+        const { status } = await Contacts.getPermissionsAsync();
+        if (status !== 'granted') return;
+        const { data } = await Contacts.getContactsAsync({ fields: [Contacts.Fields.Emails] });
+        const emails: string[] = [];
+        data.forEach(c => {
+          (c.emails ?? []).forEach(e => { if (e.email) emails.push(e.email.toLowerCase()); });
+        });
+        const matches = await findContactsOnFlare(emails, currentUserId);
+        setContactMatches(matches);
+        setContactsLoaded(true);
+      } catch {}
+    })();
+  }, [visible]);
 
   function handleClose() {
     setQuery('');
@@ -49,9 +72,18 @@ export default function SearchModal({ visible, theme, isDark, currentUserId, onC
     onClose();
   }
 
+  function getContactFollowStatus(user: SearchUser): SearchUser['followStatus'] {
+    return followStates[user.id] ?? user.followStatus;
+  }
+
   function handleUserPress(user: SearchUser) {
-    // Merge any local follow state into the user object before opening profile
-    setSelectedUser({ ...user, followStatus: followStates[user.id] ?? user.followStatus });
+    const merged = { ...user, followStatus: followStates[user.id] ?? user.followStatus };
+    if (onUserPress) {
+      onClose();
+      onUserPress(merged);
+    } else {
+      setSelectedUser(merged);
+    }
   }
 
   const runSearch = useCallback(async (q: string) => {
@@ -228,12 +260,28 @@ export default function SearchModal({ visible, theme, isDark, currentUserId, onC
         )}
 
         {!searched && !loading && (
-          <View style={styles.hint}>
-            <Ionicons name="people-outline" size={48} color={theme.textMuted} />
-            <Text style={[styles.hintText, { color: theme.textMuted }]}>
-              Search by name or username
-            </Text>
-          </View>
+          contactMatches.length > 0 ? (
+            <FlatList
+              data={contactMatches}
+              keyExtractor={u => u.id}
+              renderItem={({ item }) => <UserRow user={item} />}
+              contentContainerStyle={styles.list}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              ListHeaderComponent={
+                <Text style={[styles.resultCount, { color: theme.textMuted }]}>
+                  People you know on Flair
+                </Text>
+              }
+            />
+          ) : (
+            <View style={styles.hint}>
+              <Ionicons name="people-outline" size={48} color={theme.textMuted} />
+              <Text style={[styles.hintText, { color: theme.textMuted }]}>
+                Search by name or username
+              </Text>
+            </View>
+          )
         )}
       </SafeAreaView>
 

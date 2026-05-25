@@ -10,6 +10,7 @@ import { Flight, FlightStatus } from '../data/mockData';
 import FlightCard from '../components/FlightCard';
 import SearchModal from '../components/SearchModal';
 import LogoMark from '../components/LogoMark';
+import { SearchUser } from '../services/db';
 
 type Filter = 'all' | FlightStatus;
 
@@ -24,9 +25,10 @@ interface Props {
   onEditFlight: (id: string, updates: import('../components/EditFlightModal').FlightEditUpdates) => void;
   onDeleteFlight: (id: string) => void;
   onRefresh: () => Promise<void>;
+  onUserPress?: (user: SearchUser) => void;
 }
 
-export default function FeedScreen({ theme, isDark, flights, currentUserId, currentUserName, currentUserInitials, currentUserAvatarUri, onEditFlight, onDeleteFlight, onRefresh }: Props) {
+export default function FeedScreen({ theme, isDark, flights, currentUserId, currentUserName, currentUserInitials, currentUserAvatarUri, onEditFlight, onDeleteFlight, onRefresh, onUserPress }: Props) {
   const [filter, setFilter] = useState<Filter>('all');
   const [showSearch, setShowSearch] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -127,6 +129,7 @@ export default function FeedScreen({ theme, isDark, flights, currentUserId, curr
             currentUserAvatarUri={currentUserAvatarUri}
             onDelete={() => onDeleteFlight(item.id)}
             onEdit={updates => onEditFlight(item.id, updates)}
+            onUserPress={onUserPress}
           />
         )}
         renderSectionHeader={({ section }) =>
@@ -155,6 +158,7 @@ export default function FeedScreen({ theme, isDark, flights, currentUserId, curr
         isDark={isDark}
         currentUserId={currentUserId}
         onClose={() => setShowSearch(false)}
+        onUserPress={onUserPress}
       />
 
     </SafeAreaView>

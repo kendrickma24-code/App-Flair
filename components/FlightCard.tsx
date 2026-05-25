@@ -13,7 +13,8 @@ import RouteDisplay from './RouteDisplay';
 import FlightDetailModal from './FlightDetailModal';
 import EditFlightModal from './EditFlightModal';
 import SameRouteModal from './SameRouteModal';
-import { toggleLike, addFlightCompanion, removeFlightCompanion, getFlightCompanions, FlightCompanion, getSameRouteUsers, RouteUser } from '../services/db';
+import UserProfileModal from './UserProfileModal';
+import { addFlightCompanion, removeFlightCompanion, getFlightCompanions, FlightCompanion, getSameRouteUsers, RouteUser, reportContent, SearchUser } from '../services/db';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -25,24 +26,21 @@ interface Props {
   currentUserId?: string;
   currentUserName?: string;
   currentUserInitials?: string;
+  currentUserAvatarUri?: string | null;
   onDelete?: () => void;
   onEdit?: (updates: import('./EditFlightModal').FlightEditUpdates) => void;
-  onLikeChange?: (flightId: string, liked: boolean) => void;
+  onUserPress?: (user: SearchUser) => void;
 }
 
-export default function FlightCard({ flight, theme, isDark = false, isOwn, currentUserId = '', currentUserName = '', currentUserInitials = '?', onDelete, onEdit, onLikeChange }: Props) {
-  const [liked, setLiked] = useState(flight.liked);
-  const [likeCount, setLikeCount] = useState(flight.likes);
-  const [commentCount, setCommentCount] = useState(flight.comments);
+export default function FlightCard({ flight, theme, isDark = false, isOwn, currentUserId = '', currentUserName = '', currentUserInitials = '?', currentUserAvatarUri, onDelete, onEdit, onUserPress }: Props) {
   const [photoIndex, setPhotoIndex] = useState(0);
   const [showDetail, setShowDetail] = useState(false);
-  const [openComments, setOpenComments] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showSameRoute, setShowSameRoute] = useState(false);
   const [failedPhotos, setFailedPhotos] = useState<Set<string>>(new Set());
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const heartScale = useRef(new Animated.Value(1)).current;
-  const likeDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [showUserProfile, setShowUserProfile] = useState(false);
 
   // Companion state — "I'm on this flight" (non-own upcoming/live only)
   const showCompanionFeature = !isOwn && (flight.status === 'upcoming' || flight.status === 'live');
@@ -65,7 +63,7 @@ export default function FlightCard({ flight, theme, isDark = false, isOwn, curre
   useEffect(() => {
     if (!showSameRouteBtn || !currentUserId) return;
     getSameRouteUsers(flight.from.code, flight.to.code, currentUserId)
-      .then(setRouteUsers)
+      .then(users => setRouteUsers(users.filter(u => u.userId !== flight.userId)))
       .catch(() => {});
   }, [flight.id, showSameRouteBtn]);
 
@@ -81,17 +79,12 @@ export default function FlightCard({ flight, theme, isDark = false, isOwn, curre
         setIsOnFlight(true);
         await addFlightCompanion(flight.id, currentUserId, currentUserName, currentUserInitials);
       }
-    } catch (e) {
-      // revert on error
+    } catch {
       setIsOnFlight(prev => !prev);
     } finally {
       setLoadingCompanion(false);
     }
   }
-
-  // Sync liked/likeCount if parent updates the flight from an external action (e.g. liked in profile)
-  useEffect(() => { setLiked(flight.liked); }, [flight.liked]);
-  useEffect(() => { setLikeCount(flight.likes); }, [flight.likes]);
 
   useEffect(() => {
     if (flight.status !== 'live') return;
@@ -102,29 +95,6 @@ export default function FlightCard({ flight, theme, isDark = false, isOwn, curre
       ])
     ).start();
   }, []);
-
-  function handleLike() {
-    const next = !liked;
-    setLiked(next);
-    setLikeCount(c => next ? c + 1 : Math.max(0, c - 1));
-    if (next) {
-      Animated.sequence([
-        Animated.timing(heartScale, { toValue: 1.45, duration: 140, useNativeDriver: true }),
-        Animated.spring(heartScale, { toValue: 1, friction: 4, tension: 180, useNativeDriver: true }),
-      ]).start();
-    } else {
-      Animated.sequence([
-        Animated.timing(heartScale, { toValue: 0.88, duration: 100, useNativeDriver: true }),
-        Animated.timing(heartScale, { toValue: 1, duration: 120, useNativeDriver: true }),
-      ]).start();
-    }
-    // Debounced persist — avoids spamming DB on rapid taps
-    if (likeDebounce.current) clearTimeout(likeDebounce.current);
-    likeDebounce.current = setTimeout(() => {
-      if (currentUserId) toggleLike(flight.id, currentUserId, next, currentUserName).catch(() => {});
-    }, 600);
-    onLikeChange?.(flight.id, next);
-  }
 
   function openPhoto(index: number) {
     setPhotoIndex(index);
@@ -162,33 +132,62 @@ export default function FlightCard({ flight, theme, isDark = false, isOwn, curre
           tint={isDark ? 'dark' : 'light'}
           style={StyleSheet.absoluteFill}
         />
-        {/* Base fill + outer border */}
         <View style={[StyleSheet.absoluteFill, { backgroundColor: glassOverlay, borderRadius: 24, borderWidth: StyleSheet.hairlineWidth, borderColor: glassBorder }]} />
-        {/* Inner top highlight — simulates glass refraction edge */}
         <View style={[StyleSheet.absoluteFill, { borderRadius: 24, borderWidth: 1, borderTopColor: glassInner, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: 'transparent' }]} />
-        <TouchableOpacity activeOpacity={0.97} onPress={() => { setOpenComments(false); setShowDetail(true); }}>
+
+        <TouchableOpacity activeOpacity={0.97} onPress={() => setShowDetail(true)}>
           <View style={styles.cardTop}>
-            <View style={styles.userRow}>
-              <LinearGradient colors={flight.user.avatarColors} style={styles.avatar}>
-                <Text style={styles.avatarText}>{flight.user.initials}</Text>
-              </LinearGradient>
+            <TouchableOpacity
+              style={styles.userRow}
+              activeOpacity={0.75}
+              onPress={() => {
+                if (isOwn) return;
+                const user: SearchUser = {
+                  id: flight.userId,
+                  username: flight.user.handle.replace('@', ''),
+                  fullName: flight.user.name,
+                  avatarUrl: flight.user.avatarUrl ?? null,
+                  isPrivate: false,
+                  followStatus: 'none',
+                };
+                if (onUserPress) { onUserPress(user); } else { setShowUserProfile(true); }
+              }}
+            >
+              {flight.user.avatarUrl ? (
+                <Image source={{ uri: flight.user.avatarUrl }} style={styles.avatar} />
+              ) : (
+                <LinearGradient colors={flight.user.avatarColors} style={styles.avatar}>
+                  <Text style={styles.avatarText}>{flight.user.initials}</Text>
+                </LinearGradient>
+              )}
               <View>
                 <Text style={[styles.userName, { color: theme.text }]}>{flight.user.name}</Text>
                 <Text style={[styles.timeAgo, { color: theme.textMuted }]}>{flight.user.handle} · {flight.timeAgo}</Text>
               </View>
-            </View>
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => {
-              if (!isOwn) return;
-              Alert.alert(flight.flightNum || 'Flight', undefined, [
-                { text: 'Edit', onPress: () => setShowEdit(true) },
-                { text: 'Delete', style: 'destructive', onPress: () => {
-                  Alert.alert('Delete Flight', 'Are you sure you want to delete this flight? It will be moved to Recently Deleted.', [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Delete', style: 'destructive', onPress: onDelete },
-                  ]);
-                }},
-                { text: 'Cancel', style: 'cancel' },
-              ]);
+              if (isOwn) {
+                Alert.alert(flight.flightNum || 'Flight', undefined, [
+                  { text: 'Edit', onPress: () => setShowEdit(true) },
+                  { text: 'Delete', style: 'destructive', onPress: () => {
+                    Alert.alert('Delete Flight', 'Are you sure you want to delete this flight? It will be moved to Recently Deleted.', [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Delete', style: 'destructive', onPress: onDelete },
+                    ]);
+                  }},
+                  { text: 'Cancel', style: 'cancel' },
+                ]);
+              } else {
+                Alert.alert('Report Flight', 'Is this content inappropriate or spam?', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Report', style: 'destructive', onPress: async () => {
+                    try {
+                      await reportContent('flight', flight.id);
+                      Alert.alert('Reported', 'Thanks for letting us know. We\'ll review this content.');
+                    } catch { Alert.alert('Error', 'Could not submit report. Please try again.'); }
+                  }},
+                ]);
+              }
             }}>
               <Ionicons name="ellipsis-horizontal" size={20} color={theme.textMuted} />
             </TouchableOpacity>
@@ -199,7 +198,7 @@ export default function FlightCard({ flight, theme, isDark = false, isOwn, curre
           <View style={styles.metaRow}>
             {flight.flightNum ? <Text style={[styles.metaText, { color: theme.textSub }]}>{flight.flightNum}</Text> : null}
             {flight.flightNum ? <View style={[styles.dot, { backgroundColor: theme.textMuted }]} /> : null}
-            <Text style={[styles.metaText, { color: theme.textMuted }]}>{flight.date}</Text>
+            <Text style={[styles.metaText, { color: theme.textMuted }]}>{(() => { const p = flight.date.split('-'); return p.length === 3 ? `${p[1]}-${p[0]}-${p[2].slice(-2)}` : flight.date; })()}</Text>
             {flight.duration ? <><View style={[styles.dot, { backgroundColor: theme.textMuted }]} /><Text style={[styles.metaText, { color: theme.textMuted }]}>{flight.duration}</Text></> : null}
             {renderBadge()}
           </View>
@@ -231,10 +230,10 @@ export default function FlightCard({ flight, theme, isDark = false, isOwn, curre
             >
               {flight.photos.map((uri, i) => (
                 <TouchableOpacity key={uri} onPress={() => openPhoto(i)} activeOpacity={0.9}>
-                  <View style={styles.stripPhotoWrap}>
+                  <View style={[styles.stripPhotoWrap, { backgroundColor: theme.surface }]}>
                     {failedPhotos.has(uri) ? (
-                      <View style={[styles.stripPhoto, styles.stripPhotoFallback]}>
-                        <Ionicons name="image-outline" size={28} color="#999" />
+                      <View style={[styles.stripPhoto, styles.stripPhotoFallback, { backgroundColor: theme.surface2 }]}>
+                        <Ionicons name="image-outline" size={28} color={theme.textMuted} />
                       </View>
                     ) : (
                       <Image
@@ -251,30 +250,8 @@ export default function FlightCard({ flight, theme, isDark = false, isOwn, curre
           )}
         </TouchableOpacity>
 
+        {(showCompanionFeature || showSameRouteBtn) && (
         <View style={[styles.actions, { borderTopColor: theme.sep }]}>
-          <TouchableOpacity style={styles.actionBtn} onPress={handleLike}>
-            <Animated.View style={{ transform: [{ scale: heartScale }] }}>
-              <Ionicons
-                name={liked ? 'heart' : 'heart-outline'}
-                size={18}
-                color={liked ? theme.live : theme.textMuted}
-              />
-            </Animated.View>
-            <Text style={[styles.actionText, { color: theme.textMuted }]}>
-              {likeCount}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionBtn} onPress={() => { setOpenComments(true); setShowDetail(true); }}>
-            <Ionicons name="chatbubble-outline" size={17} color={theme.textMuted} />
-            <Text style={[styles.actionText, { color: theme.textMuted }]}>{commentCount}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionBtn}>
-            <Ionicons name="share-outline" size={18} color={theme.textMuted} />
-            <Text style={[styles.actionText, { color: theme.textMuted }]}>Share</Text>
-          </TouchableOpacity>
-
           {showCompanionFeature ? (
             <TouchableOpacity
               style={[styles.routeMatchBtn, isOnFlight
@@ -304,7 +281,6 @@ export default function FlightCard({ flight, theme, isDark = false, isOwn, curre
               onPress={() => setShowSameRoute(true)}
               activeOpacity={0.75}
             >
-              {/* Stacked avatars — shown when people have joined */}
               {routeUsers.length > 0 ? (
                 <View style={styles.routeAvatarStack}>
                   {routeUsers.slice(0, 3).map((u, i) => (
@@ -338,9 +314,9 @@ export default function FlightCard({ flight, theme, isDark = false, isOwn, curre
             </TouchableOpacity>
           ) : null}
         </View>
+        )}
       </View>
 
-      {/* Edit modal */}
       <EditFlightModal
         flight={flight}
         visible={showEdit}
@@ -349,7 +325,6 @@ export default function FlightCard({ flight, theme, isDark = false, isOwn, curre
         onSave={updates => { setShowEdit(false); onEdit?.(updates); }}
       />
 
-      {/* Same Route modal */}
       <SameRouteModal
         visible={showSameRoute}
         flight={flight}
@@ -361,26 +336,35 @@ export default function FlightCard({ flight, theme, isDark = false, isOwn, curre
         onClose={() => setShowSameRoute(false)}
       />
 
-      {/* Flight detail modal */}
       <FlightDetailModal
         flight={flight}
         visible={showDetail}
         theme={theme}
         isDark={isDark}
-        currentUserName={currentUserName}
-        currentUserInitials={currentUserInitials}
         isOwn={isOwn}
         initialPhotoIndex={photoIndex}
-        scrollToComments={openComments}
-        onClose={() => { setShowDetail(false); setOpenComments(false); }}
-        onCommentCountChange={setCommentCount}
+        onClose={() => setShowDetail(false)}
         onEditPress={() => { setShowDetail(false); setShowEdit(true); }}
-        onDeletePress={() => {
-          setShowDetail(false);
-          onDelete?.();
-        }}
+        onDeletePress={() => { setShowDetail(false); onDelete?.(); }}
       />
 
+      {!isOwn && (
+        <UserProfileModal
+          user={showUserProfile ? {
+            id: flight.userId,
+            username: flight.user.handle.replace('@', ''),
+            fullName: flight.user.name,
+            avatarUrl: flight.user.avatarUrl ?? null,
+            isPrivate: false,
+            followStatus: 'none',
+          } as SearchUser : null}
+          visible={showUserProfile}
+          theme={theme}
+          isDark={isDark}
+          currentUserId={currentUserId}
+          onClose={() => setShowUserProfile(false)}
+        />
+      )}
     </>
   );
 }
@@ -412,36 +396,26 @@ const styles = StyleSheet.create({
   pulseDot: { width: 5, height: 5, borderRadius: 3 },
   badgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.6, lineHeight: 13, includeFontPadding: false },
   note: { fontSize: 14, fontWeight: '400', lineHeight: 21, marginTop: 6, marginBottom: 2 },
-  companionStrip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    marginTop: 10,
-  },
+  companionStrip: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10 },
   companionStripText: { fontSize: 12, fontWeight: '500', flex: 1 },
   photoStrip: { marginTop: 14, height: 140 },
-  stripPhotoWrap: { width: 210, height: 140, borderRadius: 16, marginHorizontal: 4, overflow: 'hidden', backgroundColor: '#c8c8c8' },
+  stripPhotoWrap: { width: 210, height: 140, borderRadius: 16, marginHorizontal: 4, overflow: 'hidden' },
   stripPhoto: { width: 210, height: 140 },
-  stripPhotoFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#e0e0e0' },
+  stripPhotoFallback: { alignItems: 'center', justifyContent: 'center' },
   actions: {
-    flexDirection: 'row', alignItems: 'center', gap: 2,
+    flexDirection: 'row', alignItems: 'center',
     paddingTop: 14, borderTopWidth: StyleSheet.hairlineWidth, marginTop: 14,
   },
-  actionBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: 5, paddingVertical: 7, borderRadius: 12,
-  },
-  actionText: { fontSize: 12, fontWeight: '600', letterSpacing: 0.1 },
   routeMatchBtn: {
-    flex: 1.4, alignItems: 'center', justifyContent: 'center',
+    flex: 1, alignItems: 'center', justifyContent: 'center',
     flexDirection: 'row', gap: 5, paddingVertical: 7, paddingHorizontal: 8, borderRadius: 20,
   },
   routeMatchText: { fontSize: 12, fontWeight: '700' },
-
   routeAvatarStack: { flexDirection: 'row', alignItems: 'center' },
   routeAvatar: {
     width: 18, height: 18, borderRadius: 9,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5,
-    overflow: 'hidden',
+    borderWidth: 1.5, overflow: 'hidden',
   },
   routeAvatarImg:  { width: 18, height: 18 },
   routeAvatarText: { fontSize: 8, fontWeight: '800' },
