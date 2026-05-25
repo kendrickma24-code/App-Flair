@@ -198,7 +198,7 @@ function buildRoutes(routes){
     period:3200+i*430,offset:i*0.23
   }));
 }
-window.__globeUpdateRoutes=function(routes){buildRoutes(routes);};
+window.__globeUpdateRoutes=function(routes){pendingRoutes=routes;buildRoutes(routes);};
 
 // ── Animation loop ─────────────────────────────────────────────────────
 function animateLoop(ts){
@@ -241,7 +241,7 @@ Promise.all([
     return{centroid:d3.geoCentroid(f),code,name:SNAMES[code]||code};
   }).filter(d=>d.code);
   topoReady=true;
-  buildRoutes(pendingRoutes);
+  if(pendingRoutes.length>0)buildRoutes(pendingRoutes);
 }).catch(()=>{});
 
 // ── Touch ──────────────────────────────────────────────────────────────
